@@ -14,6 +14,17 @@ export const Colors = {
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
+    /**
+     * Brand accent for primary buttons and progress fills. Keep in sync with
+     * StudyTimerWidgetPalette.accent in targets/study-timer-widget/Shared.
+     */
+    accent: '#208AEF',
+    /** Text drawn on top of `accent` or `destructive`. */
+    onAccent: '#FFFFFF',
+    /** Unfilled part of progress bars. */
+    progressTrack: '#E0E1E6',
+    /** Destructive actions, such as Stop. */
+    destructive: '#DC3E42',
   },
   dark: {
     text: '#ffffff',
@@ -21,8 +32,15 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    accent: '#208AEF',
+    onAccent: '#FFFFFF',
+    progressTrack: '#2E3135',
+    destructive: '#FF6369',
   },
 } as const;
+
+/** The color tokens of one color scheme, as returned by useTheme. */
+export type ThemeColors = (typeof Colors)[keyof typeof Colors];
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 

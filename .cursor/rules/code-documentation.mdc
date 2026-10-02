@@ -1,0 +1,55 @@
+---
+description: Document all code with guide-style comments so developers can navigate AI-written code
+alwaysApply: true
+---
+
+# Code Documentation
+
+This codebase is mostly AI-written. Comments are the guide a developer reads first, so document everything. This extends "Public documentation" in `code-quality.mdc`: private helpers get docs too.
+
+## File headers
+
+Every source file (TS, TSX, Swift, config plugins) starts with a short header: what the file is for, where it sits in the architecture (View / ViewModel / Model / native bridge / widget), and what it talks to.
+
+```ts
+/**
+ * Live Activity command queue (Model layer).
+ * Runs start/update/end commands in order against a LiveActivityPresenter so rapid
+ * taps can never leave a zombie activity. Used by create-live-activity-controller.ts.
+ */
+```
+
+## Functions, hooks, components, types
+
+- Every function, hook, component, and Swift method gets a doc comment (JSDoc `/** */` in TS, `///` in Swift): purpose, params, return value, side effects, thrown errors.
+- Every exported type, interface, and enum gets a doc comment, and so does each non-obvious field (units, ranges, null meaning).
+
+```ts
+/** Snapshot of a running or paused session. All times are epoch milliseconds. */
+type TimerSession = {
+  /** When the current running stretch began; null while paused. */
+  runningSinceMs: number | null;
+  /** Time already banked from earlier running stretches. */
+  accumulatedMs: number;
+};
+```
+
+## Inline comments
+
+- Explain **why** and any constraint the code can't show: platform limits, ordering requirements, race conditions, iOS/ActivityKit quirks, workarounds.
+- Mark multi-step logic with a short comment per step.
+- Don't restate the code (`// increment i`) or narrate history (`// changed from X`, `// added by AI`).
+
+```swift
+// ActivityKit matches activities by type name, so this struct must stay
+// byte-identical to the copy in modules/study-timer-activity/ios.
+```
+
+## Tests
+
+- Each `describe` block gets a one-line comment naming the requirement or edge case it covers.
+- Comment any non-obvious setup (fake timers, fake presenters, injected clocks).
+
+## Keep comments true
+
+- When behavior changes, update its comments in the same edit. A stale comment is a bug.
