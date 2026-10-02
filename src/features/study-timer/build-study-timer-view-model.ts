@@ -9,12 +9,19 @@ import { isSessionNameValid } from '@/features/study-timer/session-name';
 import {
   getElapsedSeconds,
   getGoalProgress,
+  isGoalComplete,
   isSessionPaused,
   type TimerSession,
 } from '@/features/study-timer/timer-state';
 
-/** Which state the timer screen is in. */
-export type StudyTimerScreenMode = 'idle' | 'running' | 'paused';
+/**
+ * Which state the timer screen is in. 'idle' shows the new-session form. 'running' and 'paused'
+ * show the active session card. 'finished' shows that card once the goal has been reached.
+ */
+export type StudyTimerScreenMode = 'idle' | 'running' | 'paused' | 'finished';
+
+/** What the button inside the progress ring does. */
+export type RingButtonAction = 'pause' | 'resume' | 'restart';
 
 /** Everything the builder needs. */
 export type StudyTimerViewModelInput = {
@@ -24,8 +31,6 @@ export type StudyTimerViewModelInput = {
   nowMs: number;
   /** Name typed into the new-session form so far. */
   draftSessionName: string;
-  /** True while the user is composing a new session on top of an active one. */
-  isComposingNewSession: boolean;
 };
 
 /** View-ready values for the timer screen. */
@@ -34,18 +39,20 @@ export type StudyTimerViewModelValues = {
   screenMode: StudyTimerScreenMode;
   /** Active session's name, or an empty string when idle. */
   sessionName: string;
-  /** Elapsed time as HH:MM:SS. "00:00:00" when idle. */
+  /** Active session's task emoji, or an empty string when idle. */
+  sessionEmoji: string;
+  /** Elapsed time as HH:MM:SS. "00:00:00" when idle. Hidden once the goal is complete. */
   formattedElapsedTime: string;
-  /** Goal progress from 0 to 1. */
+  /** True once the studied time has reached the goal. The card then shows "Finished!". */
+  isFinished: boolean;
+  /** Goal progress from 0 to 1; fills the progress ring. */
   goalProgress: number;
-  /** For example "40% of 25 min goal". Empty when idle. */
-  goalProgressLabel: string;
-  /** Label for the pause/resume toggle. */
-  pauseButtonLabel: 'Pause' | 'Resume';
-  /** Whether the new-session form is shown. */
-  isNewSessionFormVisible: boolean;
-  /** Whether the form offers Cancel, which is only possible while a session is active. */
-  canCancelNewSession: boolean;
+  /** What the button inside the ring does: pause, resume, or restart after the goal. */
+  ringButtonAction: RingButtonAction;
+  /** Accessible name of the button inside the ring. */
+  pauseButtonLabel: 'Pause' | 'Resume' | 'Restart';
+  /** Label of the button under the ring: Stop, or Start a new session once finished. */
+  sessionActionLabel: 'Stop' | 'Start a new session';
   /** Whether the draft name is valid, which enables the Start button. */
   canStartSession: boolean;
 };
@@ -59,17 +66,18 @@ export type StudyTimerViewModelValues = {
 export function buildStudyTimerViewModel(
   input: StudyTimerViewModelInput
 ): StudyTimerViewModelValues {
-  const { session, nowMs, draftSessionName, isComposingNewSession } = input;
-  const goalProgress = session ? getGoalProgress(session, nowMs) : 0;
+  const { session, nowMs, draftSessionName } = input;
+  const isFinished = session !== null && isGoalComplete(session, nowMs);
   return {
-    screenMode: getScreenMode(session),
+    screenMode: getScreenMode(session, isFinished),
     sessionName: session?.name ?? '',
+    sessionEmoji: session?.emoji ?? '',
     formattedElapsedTime: formatElapsedTime(session ? getElapsedSeconds(session, nowMs) : 0),
-    goalProgress,
-    goalProgressLabel: session ? formatGoalProgressLabel(goalProgress, session.goalSeconds) : '',
-    pauseButtonLabel: session && isSessionPaused(session) ? 'Resume' : 'Pause',
-    isNewSessionFormVisible: session === null || isComposingNewSession,
-    canCancelNewSession: session !== null && isComposingNewSession,
+    isFinished,
+    goalProgress: session ? getGoalProgress(session, nowMs) : 0,
+    ringButtonAction: getRingButtonAction(session, isFinished),
+    pauseButtonLabel: getRingButtonLabel(session, isFinished),
+    sessionActionLabel: isFinished ? 'Start a new session' : 'Stop',
     canStartSession: isSessionNameValid(draftSessionName),
   };
 }
@@ -78,24 +86,48 @@ export function buildStudyTimerViewModel(
  * Maps the session to the screen mode.
  *
  * @param session - Active session, or null.
- * @returns 'idle' without a session, otherwise 'running' or 'paused'.
+ * @param isFinished - Whether the goal has been reached. Takes priority over paused, so a session
+ *   frozen at its goal shows Finished rather than Resume.
+ * @returns 'idle' without a session, otherwise 'finished', 'paused' or 'running'.
  */
-function getScreenMode(session: TimerSession | null): StudyTimerScreenMode {
+function getScreenMode(session: TimerSession | null, isFinished: boolean): StudyTimerScreenMode {
   if (session === null) {
     return 'idle';
+  }
+  if (isFinished) {
+    return 'finished';
   }
   return isSessionPaused(session) ? 'paused' : 'running';
 }
 
 /**
- * Describes goal progress in words.
+ * Chooses the ring button for the session.
  *
- * @param goalProgress - Fraction from 0 to 1.
- * @param goalSeconds - Goal duration in seconds.
- * @returns For example "40% of 25 min goal". Percentages round down, so 100% means the goal is met.
+ * @param session - Active session, or null.
+ * @param isFinished - Whether the goal has been reached.
+ * @returns Restart once finished, Resume while paused, otherwise Pause.
  */
-function formatGoalProgressLabel(goalProgress: number, goalSeconds: number): string {
-  const percent = Math.floor(goalProgress * 100);
-  const goalMinutes = Math.round(goalSeconds / 60);
-  return `${percent}% of ${goalMinutes} min goal`;
+function getRingButtonAction(session: TimerSession | null, isFinished: boolean): RingButtonAction {
+  if (isFinished) {
+    return 'restart';
+  }
+  return session !== null && isSessionPaused(session) ? 'resume' : 'pause';
+}
+
+/**
+ * Names the ring button for screen readers.
+ *
+ * @param session - Active session, or null.
+ * @param isFinished - Whether the goal has been reached.
+ * @returns "Restart", "Resume" or "Pause".
+ */
+function getRingButtonLabel(
+  session: TimerSession | null,
+  isFinished: boolean
+): 'Pause' | 'Resume' | 'Restart' {
+  const action = getRingButtonAction(session, isFinished);
+  if (action === 'restart') {
+    return 'Restart';
+  }
+  return action === 'resume' ? 'Resume' : 'Pause';
 }

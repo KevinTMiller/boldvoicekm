@@ -2,12 +2,19 @@
  * Fake Live Activity presenter (test support; not used by the app).
  * Behaves like ActivityKit in memory: it tracks which activities are on screen, so tests can
  * check that none are left behind. Starts can be held open to simulate iOS taking a while to
- * create an activity. Used by the command queue, controller and view model tests.
+ * create an activity, and tapPauseButton simulates the widget's Pause/Resume button. Used by the
+ * command queue, controller, view model and screen tests.
  */
 import type {
+  LiveActivityPauseChangeListener,
   LiveActivityPresenter,
   LiveActivitySnapshot,
 } from '@/features/live-activity/live-activity.types';
+import {
+  isSessionPaused,
+  pauseSession,
+  resumeSession,
+} from '@/features/study-timer/timer-state';
 
 /** A LiveActivityPresenter with inspection and timing controls for tests. */
 export type FakeLiveActivityPresenter = LiveActivityPresenter & {
@@ -26,6 +33,14 @@ export type FakeLiveActivityPresenter = LiveActivityPresenter & {
   releaseHeldStart(): void;
   /** Puts an activity on screen directly, as if it had survived an app kill. */
   seedActivity(snapshot: LiveActivitySnapshot): void;
+  /**
+   * Simulates the user tapping the activity's Pause button, or Resume while it is paused. Like the
+   * real widget, it changes the activity first and then tells the listeners.
+   *
+   * @param activityId - Activity whose button is tapped. Unknown ids do nothing.
+   * @param changedAtMs - When the tap happens, in epoch milliseconds.
+   */
+  tapPauseButton(activityId: string, changedAtMs: number): void;
 };
 
 /**
@@ -40,6 +55,8 @@ export function createFakeLiveActivityPresenter(): FakeLiveActivityPresenter {
   const heldStartReleasers: (() => void)[] = [];
   /** Tests waiting for a start to be held. */
   const heldStartWaiters: (() => void)[] = [];
+  /** Listeners registered through addPauseChangeListener and not yet removed. */
+  const pauseChangeListeners = new Set<LiveActivityPauseChangeListener>();
   let shouldHoldStarts = false;
   let createdActivityCount = 0;
 
@@ -86,6 +103,24 @@ export function createFakeLiveActivityPresenter(): FakeLiveActivityPresenter {
     async listActive() {
       calls.push('listActive');
       return [...activeActivities.values()];
+    },
+    addPauseChangeListener(listener) {
+      pauseChangeListeners.add(listener);
+      return { remove: () => pauseChangeListeners.delete(listener) };
+    },
+    tapPauseButton(activityId, changedAtMs) {
+      const activity = activeActivities.get(activityId);
+      if (activity === undefined) {
+        return;
+      }
+      const isPaused = !isSessionPaused(activity.session);
+      const session = isPaused
+        ? pauseSession(activity.session, changedAtMs)
+        : resumeSession(activity.session, changedAtMs);
+      activeActivities.set(activityId, { ...activity, session });
+      for (const listener of pauseChangeListeners) {
+        listener({ activityId, isPaused, changedAtMs });
+      }
     },
     holdStarts() {
       shouldHoldStarts = true;

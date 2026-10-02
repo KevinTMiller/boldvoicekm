@@ -1,5 +1,6 @@
 /**
- * Tests for ActiveSessionCard (View layer), including the TimerControls and TimerButton inside it.
+ * Tests for ActiveSessionCard (View layer), including the ProgressRing, PauseResumeButton and
+ * TimerButton inside it.
  */
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
@@ -16,60 +17,91 @@ import {
  */
 function createCardProps(overrides: Partial<ActiveSessionCardProps> = {}): ActiveSessionCardProps {
   return {
+    sessionEmoji: '🍅',
     sessionName: 'Chapter 5 Review',
     formattedElapsedTime: '01:23:45',
     isPaused: false,
+    isFinished: false,
     goalProgress: 0.5,
-    goalProgressLabel: '50% of 90 min goal',
-    pauseButtonLabel: 'Pause',
-    isStartNewSessionVisible: true,
+    ringButtonAction: 'pause',
+    sessionActionLabel: 'Stop',
     onPressPauseOrResume: jest.fn(),
     onPressStop: jest.fn(),
-    onPressStartNewSession: jest.fn(),
     ...overrides,
   };
 }
 
-// Requirement: the active session shows its name, HH:MM:SS time and goal progress.
+// Requirement: the ring holds the emoji, the HH:MM:SS time and the title below it, and the ring
+// alone shows progress (no "X% of Y min goal" line).
 describe('ActiveSessionCard display', () => {
-  it('shows the session name, elapsed time and progress', async () => {
+  it('shows the emoji, elapsed time and title inside a progress ring', async () => {
     await render(<ActiveSessionCard {...createCardProps()} />);
 
-    expect(screen.getByRole('header', { name: 'Chapter 5 Review' })).toBeOnTheScreen();
+    expect(screen.getByText('🍅')).toBeOnTheScreen();
     expect(screen.getByText('01:23:45')).toBeOnTheScreen();
-    expect(screen.getByRole('progressbar')).toHaveAccessibilityValue({ now: 50 });
-    expect(screen.queryByText('Paused')).not.toBeOnTheScreen();
+    expect(screen.getByRole('header', { name: 'Chapter 5 Review' })).toBeOnTheScreen();
+    expect(screen.getByRole('progressbar', { name: 'Goal progress' })).toHaveAccessibilityValue({
+      now: 50,
+    });
   });
 
-  it('marks a paused session and offers Resume', async () => {
+  it('shrinks the elapsed time so HH:MM:SS stays inside the ring', async () => {
+    await render(<ActiveSessionCard {...createCardProps()} />);
+
+    const elapsedTime = screen.getByText('01:23:45');
+
+    expect(elapsedTime).toHaveProp('adjustsFontSizeToFit', true);
+    expect(elapsedTime).toHaveProp('numberOfLines', 1);
+    expect(elapsedTime).toHaveStyle({ alignSelf: 'stretch' });
+  });
+
+  it('has no percentage caption', async () => {
+    await render(<ActiveSessionCard {...createCardProps()} />);
+
+    expect(screen.queryByText(/% of/)).not.toBeOnTheScreen();
+  });
+
+  it('marks a paused session for screen readers and offers Resume', async () => {
     await render(
-      <ActiveSessionCard {...createCardProps({ isPaused: true, pauseButtonLabel: 'Resume' })} />
+      <ActiveSessionCard
+        {...createCardProps({ isPaused: true, ringButtonAction: 'resume' })}
+      />
     );
 
-    expect(screen.getByText('Paused')).toBeOnTheScreen();
     expect(screen.getByLabelText('Elapsed time 01:23:45, paused')).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Resume' })).toBeOnTheScreen();
   });
+
+  it('shows Finished, Restart and Start a new session once the goal is complete', async () => {
+    await render(
+      <ActiveSessionCard
+        {...createCardProps({
+          isFinished: true,
+          goalProgress: 1,
+          ringButtonAction: 'restart',
+          sessionActionLabel: 'Start a new session',
+        })}
+      />
+    );
+
+    expect(screen.getByText('Finished!')).toBeOnTheScreen();
+    expect(screen.queryByText('01:23:45')).not.toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Restart' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Start a new session' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeOnTheScreen();
+  });
 });
 
-// Requirement: Pause/Resume, Stop and Start New Session controls drive the session.
+// Requirement: the Pause/Resume button inside the ring and the Stop button drive the session.
 describe('ActiveSessionCard controls', () => {
-  it('reports Pause, Stop and Start New Session presses', async () => {
+  it('reports Pause and Stop presses', async () => {
     const props = createCardProps();
     await render(<ActiveSessionCard {...props} />);
 
     await fireEvent.press(screen.getByRole('button', { name: 'Pause' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Stop' }));
-    await fireEvent.press(screen.getByRole('button', { name: 'Start New Session' }));
 
     expect(props.onPressPauseOrResume).toHaveBeenCalledTimes(1);
     expect(props.onPressStop).toHaveBeenCalledTimes(1);
-    expect(props.onPressStartNewSession).toHaveBeenCalledTimes(1);
-  });
-
-  it('hides Start New Session while the new-session form is open', async () => {
-    await render(<ActiveSessionCard {...createCardProps({ isStartNewSessionVisible: false })} />);
-
-    expect(screen.queryByRole('button', { name: 'Start New Session' })).not.toBeOnTheScreen();
   });
 });

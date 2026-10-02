@@ -1,7 +1,7 @@
 // Goal progress shared by every layout (widget layer).
 // While running, it uses `ProgressView(timerInterval:)`, which iOS animates toward the goal by
-// itself; while paused, it shows a fixed fraction. Callers choose the style: a linear bar on the
-// Lock Screen or a circular ring in the expanded Dynamic Island.
+// itself; while paused, it shows a fixed fraction. Once the goal is complete it shows a full
+// circle. EmojiProgressRing.swift styles it as a ring and turns that circle blue.
 
 import SwiftUI
 
@@ -11,11 +11,14 @@ struct GoalProgressView: View {
   let state: StudyTimerAttributes.ContentState
   /// Goal duration in seconds.
   let goalSeconds: Double
+  /// Draws a full circle. Set once the goal has been reached, including the stale render at the
+  /// goal end, so the ring does not sit on the last moment of the timer interval.
+  var isFinished: Bool = false
 
-  /// Self-animating progress while running; a fixed fraction while paused.
+  /// A full circle once finished; self-animating progress while running; a fixed fraction while paused.
   var body: some View {
-    if state.isPaused {
-      ProgressView(value: pausedProgress)
+    if isFinished || state.isPaused {
+      ProgressView(value: isFinished ? 1 : pausedProgress)
     } else {
       ProgressView(timerInterval: goalInterval, countsDown: false) {
         EmptyView()

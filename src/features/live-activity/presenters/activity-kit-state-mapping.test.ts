@@ -1,5 +1,6 @@
 /**
- * Tests for the ActivityKit state mapping (Model layer): session to bridge state and back.
+ * Tests for the ActivityKit state mapping (Model layer): session to bridge state and back, and
+ * native tap events to pause changes.
  */
 import type {
   StartStudyTimerActivityOptions,
@@ -7,10 +8,14 @@ import type {
 } from '../../../../modules/study-timer-activity/src';
 import {
   mapActivitySnapshotToLiveActivitySnapshot,
+  mapPauseChangeEventToPauseChange,
   mapSessionToActivityState,
   mapSessionToStartOptions,
 } from '@/features/live-activity/presenters/activity-kit-state-mapping';
+import { getArcColor } from '@/components/study-timer/progress-ring-geometry';
+import { Colors } from '@/constants/theme';
 import {
+  finishSession,
   getElapsedMs,
   isSessionPaused,
   pauseSession,
@@ -18,7 +23,7 @@ import {
   startSession,
 } from '@/features/study-timer/timer-state';
 
-const sessionInput = { name: 'Organic Chemistry', goalSeconds: 3000 };
+const sessionInput = { name: 'Organic Chemistry', emoji: '🧪', goalSeconds: 3000 };
 
 /**
  * Builds a session that ran 0–60 s, paused, then resumed at 100 s, so 60 s is banked.
@@ -52,6 +57,7 @@ describe('mapSessionToActivityState', () => {
       isPaused: false,
       runningSinceMs: 1_000_000,
       pausedElapsedSeconds: 5,
+      ringColorHex: '#FF6B2B',
     });
   });
 
@@ -60,6 +66,7 @@ describe('mapSessionToActivityState', () => {
       isPaused: false,
       runningSinceMs: 40_000,
       pausedElapsedSeconds: 90,
+      ringColorHex: '#FF6B2B',
     });
   });
 
@@ -77,21 +84,33 @@ describe('mapSessionToActivityState', () => {
     expect(mapSessionToActivityState(pausedSession, 500_000)).toMatchObject({
       isPaused: true,
       pausedElapsedSeconds: 60,
+      ringColorHex: getArcColor('#E0E1E6', '#FF6B2B', true),
     });
+  });
+
+  it('sends solid blue once the goal is complete', () => {
+    const finished = finishSession(
+      startSession({ name: 'Organic Chemistry', emoji: '🧪', goalSeconds: 60 }, 0),
+      60_000
+    );
+
+    expect(mapSessionToActivityState(finished, 60_000).ringColorHex).toBe(Colors.light.accent);
   });
 });
 
-// Requirement: the activity shows the session name and carries what the app needs to restore it.
+// Requirement: the activity shows the session name and emoji and carries what the app needs to
+// restore it.
 describe('mapSessionToStartOptions', () => {
-  it('copies the name, goal, start time and variant, plus the current state', () => {
+  it('copies the name, emoji, goal, start time and variant, plus the current state', () => {
     const session = startSession(sessionInput, 1_000_000);
 
     expect(mapSessionToStartOptions(session, 'default', 1_002_000)).toEqual({
       sessionName: 'Organic Chemistry',
+      sessionEmoji: '🧪',
       goalSeconds: 3000,
       presentationVariant: 'default',
       sessionStartedAtMs: 1_000_000,
-      state: { isPaused: false, runningSinceMs: 1_000_000, pausedElapsedSeconds: 2 },
+      state: { isPaused: false, runningSinceMs: 1_000_000, pausedElapsedSeconds: 2, ringColorHex: '#FF6B2B' },
     });
   });
 });
@@ -125,7 +144,7 @@ describe('mapActivitySnapshotToLiveActivitySnapshot', () => {
     expect(getElapsedMs(restored, 500_000)).toBe(61_500);
   });
 
-  it('keeps the activity id, name, goal and presentation variant', () => {
+  it('keeps the activity id, name, emoji, goal and presentation variant', () => {
     const nativeSnapshot = makeNativeSnapshot(
       'activity-9',
       mapSessionToStartOptions(startSession(sessionInput, 0), 'compact', 1_000)
@@ -134,7 +153,16 @@ describe('mapActivitySnapshotToLiveActivitySnapshot', () => {
     expect(mapActivitySnapshotToLiveActivitySnapshot(nativeSnapshot)).toMatchObject({
       activityId: 'activity-9',
       presentationVariant: 'compact',
-      session: { name: 'Organic Chemistry', goalSeconds: 3000 },
+      session: { name: 'Organic Chemistry', emoji: '🧪', goalSeconds: 3000 },
     });
+  });
+});
+
+// Requirement: a tap on the Live Activity's Pause/Resume button reaches the app unchanged.
+describe('mapPauseChangeEventToPauseChange', () => {
+  it('copies the activity id, the new paused state and the tap time', () => {
+    expect(
+      mapPauseChangeEventToPauseChange({ activityId: 'activity-1', isPaused: true, changedAtMs: 42 })
+    ).toEqual({ activityId: 'activity-1', isPaused: true, changedAtMs: 42 });
   });
 });

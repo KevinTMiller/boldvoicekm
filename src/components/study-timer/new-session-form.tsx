@@ -1,12 +1,13 @@
 /**
  * New session form (View layer).
- * Collects a session name and goal, then starts the session. Shown when no session is active, or
- * over the active session after "Start New Session", in which case it also offers Cancel.
- * Presentational: values and handlers come from the study timer view model via TimerScreen.
+ * Collects a session name, a task emoji and a goal, then starts the session. Shown while no
+ * session is active, including after a session is stopped. Presentational: values and handlers
+ * come from the study timer view model via TimerScreen.
  */
 import { StyleSheet, TextInput, View } from 'react-native';
 
-import { GoalPicker } from '@/components/study-timer/goal-picker';
+import { EmojiPicker } from '@/components/study-timer/emoji-picker';
+import { GoalSlider } from '@/components/study-timer/goal-slider';
 import { TimerButton } from '@/components/study-timer/timer-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -19,40 +20,43 @@ export type NewSessionFormProps = {
   draftSessionName: string;
   /** Longest name the input accepts, in characters. */
   maxSessionNameLength: number;
-  /** Goal presets to offer, in minutes. */
+  /** One-tap task emojis. */
+  suggestedEmojis: readonly string[];
+  /** Task emoji currently selected. */
+  selectedEmoji: string;
+  /** Goal choices the slider offers, in minutes, shortest first. */
   goalOptionsMinutes: readonly number[];
   /** Currently selected goal, in minutes. */
   selectedGoalMinutes: number;
   /** Enables Start Session; false while the name is blank. */
   canStartSession: boolean;
-  /** Shows Cancel; only true while a session is already active. */
-  canCancel: boolean;
   /** Called as the user types. */
   onChangeDraftSessionName: (sessionName: string) => void;
-  /** Called when a goal preset is tapped. */
+  /** Called when a suggested or typed emoji is chosen. */
+  onSelectEmoji: (emoji: string) => void;
+  /** Called with the goal, in minutes, at the slider stop the user moved to. */
   onSelectGoalMinutes: (goalMinutes: number) => void;
   /** Called on Start Session, or on the keyboard's Go key. */
   onPressStart: () => void;
-  /** Called on Cancel. */
-  onPressCancel: () => void;
 };
 
 /**
- * Card with the session name input, the goal picker and the start/cancel buttons.
+ * Card with the session name, the emoji picker, the goal slider and the Start Session button.
  *
  * @param props - Form values and handlers.
  */
 export function NewSessionForm({
   draftSessionName,
   maxSessionNameLength,
+  suggestedEmojis,
+  selectedEmoji,
   goalOptionsMinutes,
   selectedGoalMinutes,
   canStartSession,
-  canCancel,
   onChangeDraftSessionName,
+  onSelectEmoji,
   onSelectGoalMinutes,
   onPressStart,
-  onPressCancel,
 }: NewSessionFormProps) {
   const theme = useTheme();
   return (
@@ -75,16 +79,17 @@ export function NewSessionForm({
           style={[styles.input, { color: theme.text, backgroundColor: theme.background }]}
         />
       </View>
-      <View style={styles.field}>
-        <ThemedText type="smallBold">Goal</ThemedText>
-        <GoalPicker
-          goalOptionsMinutes={goalOptionsMinutes}
-          selectedGoalMinutes={selectedGoalMinutes}
-          onSelectGoalMinutes={onSelectGoalMinutes}
-        />
-      </View>
+      <EmojiPicker
+        suggestedEmojis={suggestedEmojis}
+        selectedEmoji={selectedEmoji}
+        onSelectEmoji={onSelectEmoji}
+      />
+      <GoalSlider
+        goalOptionsMinutes={goalOptionsMinutes}
+        goalMinutes={selectedGoalMinutes}
+        onChangeGoalMinutes={onSelectGoalMinutes}
+      />
       <View style={styles.actions}>
-        {canCancel && <TimerButton label="Cancel" variant="secondary" onPress={onPressCancel} />}
         <TimerButton
           label="Start Session"
           variant="primary"

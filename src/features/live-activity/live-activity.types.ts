@@ -5,6 +5,7 @@
  * - the commands a trigger policy issues (LiveActivityCommand),
  * - the policy that decides *when* to show the activity (LiveActivityTriggerPolicy),
  * - the presenter that decides *what* shows it (LiveActivityPresenter),
+ * - the Pause/Resume taps an activity reports back to the app (LiveActivityPauseChange),
  * - the config that selects them (LiveActivityConfig).
  * Implementations live in trigger-policies/ and presenters/, and create-live-activity-controller.ts
  * wires them together. This file contains types only.
@@ -75,6 +76,31 @@ export type LiveActivitySnapshot = {
 };
 
 /**
+ * The user tapped Pause or Resume on the Live Activity itself. By the time this arrives the
+ * activity already shows the new state; the app still has to apply it to the session.
+ */
+export type LiveActivityPauseChange = {
+  /** Activity whose button was tapped. */
+  activityId: string;
+  /** True after a Pause tap, false after a Resume tap. */
+  isPaused: boolean;
+  /**
+   * When the tap happened, in epoch milliseconds. Applying the change at this time, rather than
+   * when the app hears about it, keeps the app's elapsed time identical to the activity's.
+   */
+  changedAtMs: number;
+};
+
+/** Receives Pause/Resume taps from a Live Activity. */
+export type LiveActivityPauseChangeListener = (change: LiveActivityPauseChange) => void;
+
+/** A registered listener. */
+export type LiveActivitySubscription = {
+  /** Stops the listener from being called. Safe to call more than once. */
+  remove(): void;
+};
+
+/**
  * I/O adapter that actually shows the activity. Swap the presenter to change *what* shows it, for
  * example ActivityKit on iOS or nothing at all. Methods may reject; the command queue catches and
  * reports every error.
@@ -101,6 +127,13 @@ export interface LiveActivityPresenter {
   endAll(): Promise<void>;
   /** Lists the activities currently on screen, for example after the app was killed. */
   listActive(): Promise<LiveActivitySnapshot[]>;
+  /**
+   * Listens for Pause/Resume taps on any activity this presenter shows. Presenters whose
+   * activities have no buttons never call the listener.
+   *
+   * @returns A subscription that stops the listener when removed.
+   */
+  addPauseChangeListener(listener: LiveActivityPauseChangeListener): LiveActivitySubscription;
 }
 
 /**
@@ -152,6 +185,13 @@ export interface LiveActivityController {
    * an event issued commands while the restore ran (the user's newer action wins).
    */
   restoreSession(): Promise<TimerSession | null>;
+  /**
+   * Listens for Pause/Resume taps on the current session's activity. Taps on any other activity,
+   * such as one that is being ended, are dropped so they cannot change the session.
+   *
+   * @returns A subscription that stops the listener when removed.
+   */
+  addPauseChangeListener(listener: LiveActivityPauseChangeListener): LiveActivitySubscription;
   /** Resolves once all queued work has finished. Useful in tests. */
   whenIdle(): Promise<void>;
 }

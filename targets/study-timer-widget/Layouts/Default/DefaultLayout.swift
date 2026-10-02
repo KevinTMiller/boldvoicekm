@@ -18,23 +18,41 @@ enum DefaultLayout {
   /// - Parameters:
   ///   - attributes: Static data the activity was started with.
   ///   - state: Current content state.
+  ///   - activityId: ActivityKit id of this activity, for the Pause/Resume button.
+  ///   - isStale: Whether iOS is rendering this activity because the goal end has passed.
   /// - Returns: The Lock Screen view.
   static func lockScreen(
     attributes: StudyTimerAttributes,
-    state: StudyTimerAttributes.ContentState
+    state: StudyTimerAttributes.ContentState,
+    activityId: String,
+    isStale: Bool
   ) -> some View {
-    DefaultLockScreenView(attributes: attributes, state: state)
+    DefaultLockScreenView(
+      attributes: attributes,
+      state: state,
+      activityId: activityId,
+      isStale: isStale
+    )
   }
 
   /// Builds the Dynamic Island presentations.
   /// - Parameters:
   ///   - attributes: Static data the activity was started with.
   ///   - state: Current content state.
+  ///   - activityId: ActivityKit id of this activity, for the Pause/Resume button.
+  ///   - isStale: Whether iOS is rendering this activity because the goal end has passed.
   /// - Returns: The compact, minimal and expanded presentations.
   static func dynamicIsland(
     attributes: StudyTimerAttributes,
-    state: StudyTimerAttributes.ContentState
+    state: StudyTimerAttributes.ContentState,
+    activityId: String,
+    isStale: Bool
   ) -> DynamicIsland {
-    DefaultDynamicIsland.make(attributes: attributes, state: state)
+    DefaultDynamicIsland.make(
+      attributes: attributes,
+      state: state,
+      activityId: activityId,
+      isStale: isStale
+    )
   }
 }

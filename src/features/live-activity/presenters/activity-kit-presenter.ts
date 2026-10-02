@@ -1,19 +1,25 @@
 /**
  * ActivityKit presenter (Model layer, swappable strategy, I/O adapter).
  * Shows the study timer as an iOS Live Activity through the StudyTimerActivity native module in
- * modules/study-timer-activity. Registered under 'activityKit' in live-activity-registry.ts. It
- * reports itself unsupported when the native module is missing (Android, web, Expo Go, Jest) or
- * the user has disabled Live Activities, so the resolver swaps in the no-op presenter.
+ * modules/study-timer-activity, and relays the Pause/Resume taps made on that activity. Registered
+ * under 'activityKit' in live-activity-registry.ts. It reports itself unsupported when the native
+ * module is missing (Android, web, Expo Go, Jest) or the user has disabled Live Activities, so the
+ * resolver swaps in the no-op presenter.
  */
+import { Appearance } from 'react-native';
+
 import {
   StudyTimerActivity,
   type StudyTimerActivityApi,
 } from '../../../../modules/study-timer-activity/src';
+import { Colors } from '@/constants/theme';
 import type { LiveActivityPresenter } from '@/features/live-activity/live-activity.types';
 import {
   mapActivitySnapshotToLiveActivitySnapshot,
+  mapPauseChangeEventToPauseChange,
   mapSessionToActivityState,
   mapSessionToStartOptions,
+  type LiveActivityRingTheme,
 } from '@/features/live-activity/presenters/activity-kit-state-mapping';
 
 /** Registry id of the ActivityKit presenter. */
@@ -25,6 +31,8 @@ export type ActivityKitPresenterDependencies = {
   nativeApi?: StudyTimerActivityApi;
   /** Clock returning epoch milliseconds. Defaults to Date.now. */
   now?: () => number;
+  /** Ring colors to send. Defaults to the current light or dark theme. */
+  ringTheme?: () => LiveActivityRingTheme;
 };
 
 /**
@@ -36,19 +44,36 @@ export type ActivityKitPresenterDependencies = {
 export function createActivityKitPresenter({
   nativeApi = StudyTimerActivity,
   now = Date.now,
+  ringTheme = ringThemeForCurrentColorScheme,
 }: ActivityKitPresenterDependencies = {}): LiveActivityPresenter {
   return {
     id: ACTIVITY_KIT_PRESENTER_ID,
     isSupported: () => nativeApi.isAvailable() && nativeApi.areActivitiesEnabled(),
     start: (session, presentationVariant) =>
-      nativeApi.startActivity(mapSessionToStartOptions(session, presentationVariant, now())),
+      nativeApi.startActivity(
+        mapSessionToStartOptions(session, presentationVariant, now(), ringTheme())
+      ),
     update: (activityId, session) =>
-      nativeApi.updateActivity(activityId, mapSessionToActivityState(session, now())),
+      nativeApi.updateActivity(activityId, mapSessionToActivityState(session, now(), ringTheme())),
     end: (activityId) => nativeApi.endActivity(activityId),
     endAll: () => nativeApi.endAllActivities(),
     listActive: async () => {
       const snapshots = await nativeApi.getActiveActivities();
       return snapshots.map(mapActivitySnapshotToLiveActivitySnapshot);
     },
+    addPauseChangeListener: (listener) =>
+      nativeApi.addPauseChangeListener((event) =>
+        listener(mapPauseChangeEventToPauseChange(event))
+      ),
   };
+}
+
+/**
+ * Ring colors for the phone's current appearance. The Live Activity cannot read the React Native
+ * theme, so each update carries the color the app is using.
+ *
+ * @returns The light theme, or the dark theme when the phone is in dark mode.
+ */
+function ringThemeForCurrentColorScheme(): LiveActivityRingTheme {
+  return Appearance.getColorScheme() === 'dark' ? Colors.dark : Colors.light;
 }

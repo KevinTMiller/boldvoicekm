@@ -15,14 +15,19 @@ export const Colors = {
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
     /**
-     * Brand accent for primary buttons and progress fills. Keep in sync with
-     * StudyTimerWidgetPalette.accent in targets/study-timer-widget/Shared.
+     * Brand accent for primary buttons, the goal slider and the selected emoji. Also the progress
+     * ring once the goal is complete. Keep in sync with StudyTimerWidgetPalette.finishedRing.
      */
     accent: '#208AEF',
     /** Text drawn on top of `accent` or `destructive`. */
     onAccent: '#FFFFFF',
-    /** Unfilled part of progress bars. */
+    /** Unfilled track of the progress ring. */
     progressTrack: '#E0E1E6',
+    /**
+     * Filled part of the progress ring. Keep in sync with StudyTimerWidgetPalette.progressRing in
+     * targets/study-timer-widget/Shared, so the app and the Live Activity match.
+     */
+    progressRing: '#FF6B2B',
     /** Destructive actions, such as Stop. */
     destructive: '#DC3E42',
   },
@@ -35,6 +40,7 @@ export const Colors = {
     accent: '#208AEF',
     onAccent: '#FFFFFF',
     progressTrack: '#2E3135',
+    progressRing: '#FF6B2B',
     destructive: '#FF6369',
   },
 } as const;

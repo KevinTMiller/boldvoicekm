@@ -26,4 +26,13 @@ describe('no-op presenter', () => {
     await expect(presenter.endAll()).resolves.toBeUndefined();
     await expect(presenter.listActive()).resolves.toEqual([]);
   });
+
+  it('accepts a Pause/Resume listener without ever calling it', () => {
+    const listener = jest.fn();
+
+    const subscription = createNoopPresenter().addPauseChangeListener(listener);
+
+    expect(() => subscription.remove()).not.toThrow();
+    expect(listener).not.toHaveBeenCalled();
+  });
 });

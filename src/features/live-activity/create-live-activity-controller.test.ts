@@ -1,6 +1,7 @@
 /**
- * Tests for the Live Activity controller (Model layer): policy wiring, intended visibility and
- * restore. Uses the in-memory fake presenter, which tracks what is on screen.
+ * Tests for the Live Activity controller (Model layer): policy wiring, intended visibility,
+ * restore and relaying Pause/Resume taps. Uses the in-memory fake presenter, which tracks what is
+ * on screen and can simulate taps on an activity's Pause/Resume button.
  */
 import { createLiveActivityController } from '@/features/live-activity/create-live-activity-controller';
 import type {
@@ -217,5 +218,61 @@ describe('controller restoreSession', () => {
     expect([...presenter.activeActivities.values()].map((activity) => activity.session.name)).toEqual([
       'New session',
     ]);
+  });
+});
+
+// Requirement: Pause/Resume taps on the current session's activity reach the app; taps on any
+// other activity are dropped.
+describe('controller addPauseChangeListener', () => {
+  it('relays a tap on the activity it started', async () => {
+    const { controller, presenter } = createControllerUnderTest();
+    const listener = jest.fn();
+    controller.addPauseChangeListener(listener);
+    controller.notify({ type: 'sessionStarted', session: makeSession('Chapter 5') });
+    await controller.whenIdle();
+
+    presenter.tapPauseButton('activity-1', 5000);
+
+    expect(listener).toHaveBeenCalledWith({
+      activityId: 'activity-1',
+      isPaused: true,
+      changedAtMs: 5000,
+    });
+  });
+
+  it('relays a tap on an activity it restored', async () => {
+    const { controller, presenter } = createControllerUnderTest();
+    const listener = jest.fn();
+    controller.addPauseChangeListener(listener);
+    presenter.seedActivity(makeSnapshot('survivor'));
+    await controller.restoreSession();
+
+    presenter.tapPauseButton('survivor', 5000);
+
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ activityId: 'survivor' }));
+  });
+
+  it('drops a tap on an activity it does not track', () => {
+    const { controller, presenter } = createControllerUnderTest();
+    const listener = jest.fn();
+    controller.addPauseChangeListener(listener);
+    presenter.seedActivity(makeSnapshot('stale'));
+
+    presenter.tapPauseButton('stale', 5000);
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('stops relaying once the subscription is removed', async () => {
+    const { controller, presenter } = createControllerUnderTest();
+    const listener = jest.fn();
+    const subscription = controller.addPauseChangeListener(listener);
+    controller.notify({ type: 'sessionStarted', session: makeSession('Chapter 5') });
+    await controller.whenIdle();
+
+    subscription.remove();
+    presenter.tapPauseButton('activity-1', 5000);
+
+    expect(listener).not.toHaveBeenCalled();
   });
 });

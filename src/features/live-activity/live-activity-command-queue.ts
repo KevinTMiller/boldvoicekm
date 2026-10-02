@@ -57,6 +57,14 @@ export type LiveActivityCommandQueue = {
    * @returns The adopted snapshot, or null if none survived or listing failed.
    */
   restore(selectActivityToRestore: RestoreSelector): Promise<LiveActivitySnapshot | null>;
+  /**
+   * Reports which activity `update` and `end` currently act on: the one the last start created or
+   * the last restore adopted.
+   *
+   * @returns The tracked activity's id, or null when none is tracked (before any start finishes,
+   *   and from the moment an end begins).
+   */
+  getTrackedActivityId(): string | null;
   /** Resolves once everything scheduled so far has run. */
   whenIdle(): Promise<void>;
 };
@@ -212,6 +220,7 @@ export function createLiveActivityCommandQueue(
     restore(selectActivityToRestore) {
       return schedule(() => runRestore(selectActivityToRestore), null, 'restore');
     },
+    getTrackedActivityId: () => currentActivityId,
     async whenIdle() {
       await lastScheduledTask;
     },

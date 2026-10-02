@@ -12,7 +12,8 @@ export const NOOP_PRESENTER_ID = 'noop';
 /**
  * Creates a presenter that does nothing.
  *
- * @returns A presenter that is always supported, never shows anything and never fails.
+ * @returns A presenter that is always supported, never shows anything, never reports a
+ *   Pause/Resume tap and never fails.
  */
 export function createNoopPresenter(): LiveActivityPresenter {
   return {
@@ -23,5 +24,6 @@ export function createNoopPresenter(): LiveActivityPresenter {
     end: async () => {},
     endAll: async () => {},
     listActive: async () => [],
+    addPauseChangeListener: () => ({ remove: () => {} }),
   };
 }

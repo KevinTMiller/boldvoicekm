@@ -23,6 +23,7 @@ function createSpyController(): LiveActivityController {
   return {
     notify: jest.fn(),
     restoreSession: jest.fn(async () => null),
+    addPauseChangeListener: jest.fn(() => ({ remove: jest.fn() })),
     whenIdle: jest.fn(async () => {}),
   };
 }

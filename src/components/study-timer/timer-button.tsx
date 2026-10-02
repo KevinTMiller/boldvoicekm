@@ -1,8 +1,8 @@
 /**
  * Timer button (View layer).
  * The rounded button used across the study timer UI, in primary, secondary and destructive
- * styles. Presentational: callers pass the label and the press handler. Used by TimerControls,
- * ActiveSessionCard and NewSessionForm.
+ * styles. Presentational: callers pass the label and the press handler. Used by ActiveSessionCard
+ * and NewSessionForm.
  */
 import { Pressable, StyleSheet, Text } from 'react-native';
 

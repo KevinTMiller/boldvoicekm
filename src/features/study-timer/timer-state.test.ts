@@ -2,11 +2,16 @@
  * Tests for the timestamp-based session state functions in timer-state.ts.
  * Times are plain epoch-millisecond numbers, so no fake timers are needed.
  */
+import { DEFAULT_SESSION_EMOJI } from '@/features/study-timer/session-emoji';
 import {
   getElapsedMs,
   getElapsedSeconds,
   getGoalProgress,
   getMsUntilNextElapsedSecond,
+  finishSession,
+  getRemainingGoalMs,
+  isGoalComplete,
+  restartSession,
   isSessionPaused,
   pauseSession,
   resumeSession,
@@ -16,19 +21,24 @@ import {
 const START_MS = 1_700_000_000_000;
 const newSessionInput = { name: 'Chapter 5 Review', goalSeconds: 25 * 60 };
 
-// Requirement: starting a session begins a running clock with the given name and goal.
+// Requirement: starting a session begins a running clock with the given name, emoji and goal.
 describe('startSession', () => {
   it('creates a running session with no banked time', () => {
-    const session = startSession(newSessionInput, START_MS);
+    const session = startSession({ ...newSessionInput, emoji: '🍅' }, START_MS);
 
     expect(session).toEqual({
       name: 'Chapter 5 Review',
+      emoji: '🍅',
       goalSeconds: 1500,
       startedAtMs: START_MS,
       runningSinceMs: START_MS,
       accumulatedMs: 0,
     });
     expect(isSessionPaused(session)).toBe(false);
+  });
+
+  it('uses the default emoji when none is given', () => {
+    expect(startSession(newSessionInput, START_MS).emoji).toBe(DEFAULT_SESSION_EMOJI);
   });
 });
 
@@ -101,7 +111,7 @@ describe('getMsUntilNextElapsedSecond', () => {
   });
 });
 
-// Requirement: the progress bar and ring fill toward the session goal.
+// Requirement: the progress rings in the app and the Live Activity fill toward the session goal.
 describe('getGoalProgress', () => {
   it('reports the fraction of the goal completed', () => {
     const session = startSession({ name: 'Goal', goalSeconds: 100 }, START_MS);
@@ -119,5 +129,72 @@ describe('getGoalProgress', () => {
     const session = startSession({ name: 'Goal', goalSeconds: 0 }, START_MS);
 
     expect(getGoalProgress(session, START_MS + 10_000)).toBe(0);
+  });
+});
+
+// Requirement: the stop confirmation says how much of the goal is still left.
+describe('getRemainingGoalMs', () => {
+  it('reports the time left until the goal', () => {
+    const session = startSession({ name: 'Goal', goalSeconds: 100 }, START_MS);
+
+    expect(getRemainingGoalMs(session, START_MS + 25_000)).toBe(75_000);
+  });
+
+  it('counts only studied time, so time spent paused does not use up the goal', () => {
+    const session = startSession({ name: 'Goal', goalSeconds: 100 }, START_MS);
+    const paused = pauseSession(session, START_MS + 25_000);
+
+    expect(getRemainingGoalMs(paused, START_MS + 500_000)).toBe(75_000);
+  });
+
+  it('returns 0 once the goal is passed', () => {
+    const session = startSession({ name: 'Goal', goalSeconds: 100 }, START_MS);
+
+    expect(getRemainingGoalMs(session, START_MS + 500_000)).toBe(0);
+  });
+});
+
+// Requirement: reaching the goal finishes the session, and Restart runs the same session again.
+describe('finishing and restarting', () => {
+  it('is complete at the goal and after it, and never for a non-positive goal', () => {
+    const session = startSession({ name: 'Goal', emoji: '🍅', goalSeconds: 100 }, START_MS);
+    const openGoal = startSession({ name: 'Goal', goalSeconds: 0 }, START_MS);
+
+    expect(isGoalComplete(session, START_MS + 99_999)).toBe(false);
+    expect(isGoalComplete(session, START_MS + 100_000)).toBe(true);
+    expect(isGoalComplete(session, START_MS + 500_000)).toBe(true);
+    expect(isGoalComplete(openGoal, START_MS + 500_000)).toBe(false);
+  });
+
+  it('freezes a running session at the goal, dropping time past it', () => {
+    const session = startSession({ name: 'Goal', emoji: '🍅', goalSeconds: 100 }, START_MS);
+
+    const finished = finishSession(session, START_MS + 100_250);
+
+    expect(finished.runningSinceMs).toBeNull();
+    expect(finished.accumulatedMs).toBe(100_000);
+    expect(finishSession(finished, START_MS + 200_000)).toBe(finished);
+  });
+
+  it('leaves a session that has not reached the goal unchanged', () => {
+    const session = startSession({ name: 'Goal', goalSeconds: 100 }, START_MS);
+
+    expect(finishSession(session, START_MS + 40_000)).toBe(session);
+  });
+
+  it('restarts the same name, emoji and goal from zero', () => {
+    const session = startSession({ name: 'Goal', emoji: '🍅', goalSeconds: 100 }, START_MS);
+    const finished = finishSession(session, START_MS + 100_000);
+
+    const restarted = restartSession(finished, START_MS + 250_000);
+
+    expect(restarted).toMatchObject({
+      name: 'Goal',
+      emoji: '🍅',
+      goalSeconds: 100,
+      startedAtMs: START_MS + 250_000,
+      runningSinceMs: START_MS + 250_000,
+      accumulatedMs: 0,
+    });
   });
 });

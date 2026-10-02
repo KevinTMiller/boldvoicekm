@@ -1,16 +1,23 @@
 /**
  * Study session state (Model layer).
- * Pure, timestamp-based functions for starting, pausing and resuming a study session and for
- * reading its elapsed time and goal progress. Nothing here reads the clock: every function takes
- * `nowMs`, so results are deterministic in tests and the timer cannot drift while the app is
- * backgrounded or suspended. Used by the study timer view model and the Live Activity presenters.
+ * Pure, timestamp-based functions for starting, pausing, resuming, finishing and restarting a study
+ * session, and for reading its elapsed time, goal progress and time left. Nothing here reads the clock: every
+ * function takes `nowMs`, so results are deterministic in tests and the timer cannot drift while
+ * the app is backgrounded or suspended. Used by the study timer view model, the stop confirmation
+ * and the Live Activity presenters.
  */
+import { DEFAULT_SESSION_EMOJI } from '@/features/study-timer/session-emoji';
 
 /** Snapshot of a running or paused study session. All times are epoch milliseconds. */
 export type TimerSession = {
   /** Display name, already cleaned up by `normalizeSessionName`. */
   name: string;
-  /** Target duration in seconds; progress bars fill toward it. Expected to be greater than 0. */
+  /**
+   * Emoji for the type of task, shown inside the progress ring. One emoji, which may span several
+   * code points (e.g. 👩‍💻).
+   */
+  emoji: string;
+  /** Target duration in seconds; progress rings fill toward it. Expected to be greater than 0. */
   goalSeconds: number;
   /** When the session was first started. Used to pick the newest session when restoring. */
   startedAtMs: number;
@@ -24,6 +31,8 @@ export type TimerSession = {
 export type NewSessionInput = {
   /** Normalized session name. */
   name: string;
+  /** Task emoji; DEFAULT_SESSION_EMOJI when omitted. */
+  emoji?: string;
   /** Target duration in seconds. */
   goalSeconds: number;
 };
@@ -31,13 +40,14 @@ export type NewSessionInput = {
 /**
  * Creates a session whose clock starts running at `nowMs`.
  *
- * @param input - Name and goal for the session.
+ * @param input - Name, emoji and goal for the session.
  * @param nowMs - Current time in epoch milliseconds.
  * @returns A running session with no banked time.
  */
 export function startSession(input: NewSessionInput, nowMs: number): TimerSession {
   return {
     name: input.name,
+    emoji: input.emoji ?? DEFAULT_SESSION_EMOJI,
     goalSeconds: input.goalSeconds,
     startedAtMs: nowMs,
     runningSinceMs: nowMs,
@@ -125,6 +135,50 @@ export function getMsUntilNextElapsedSecond(session: TimerSession, nowMs: number
 }
 
 /**
+ * Reports whether the studied time has reached the goal.
+ *
+ * @param session - Session to measure.
+ * @param nowMs - Current time in epoch milliseconds.
+ * @returns True once elapsed time is at least the goal. A non-positive goal is never complete.
+ */
+export function isGoalComplete(session: TimerSession, nowMs: number): boolean {
+  if (session.goalSeconds <= 0) {
+    return false;
+  }
+  return getElapsedMs(session, nowMs) >= session.goalSeconds * 1000;
+}
+
+/**
+ * Freezes a session at the moment its goal was reached, so time past the goal is not banked.
+ *
+ * @param session - Session that may have run past its goal.
+ * @param nowMs - Current time in epoch milliseconds.
+ * @returns A paused session whose banked time equals the goal, or `session` unchanged when the
+ *   goal is not complete yet or the session is already paused.
+ */
+export function finishSession(session: TimerSession, nowMs: number): TimerSession {
+  if (!isGoalComplete(session, nowMs) || isSessionPaused(session)) {
+    return session;
+  }
+  const overrunMs = getElapsedMs(session, nowMs) - session.goalSeconds * 1000;
+  return pauseSession(session, nowMs - overrunMs);
+}
+
+/**
+ * Starts the same session's name, emoji and goal over, from zero, at `nowMs`.
+ *
+ * @param session - Session to run again.
+ * @param nowMs - Current time in epoch milliseconds.
+ * @returns A new running session.
+ */
+export function restartSession(session: TimerSession, nowMs: number): TimerSession {
+  return startSession(
+    { name: session.name, emoji: session.emoji, goalSeconds: session.goalSeconds },
+    nowMs
+  );
+}
+
+/**
  * Computes how much of the goal duration has been studied.
  *
  * @param session - Session to measure.
@@ -137,4 +191,15 @@ export function getGoalProgress(session: TimerSession, nowMs: number): number {
   }
   const progress = getElapsedMs(session, nowMs) / (session.goalSeconds * 1000);
   return Math.min(1, Math.max(0, progress));
+}
+
+/**
+ * Computes how much study time is left before the goal is reached.
+ *
+ * @param session - Session to measure.
+ * @param nowMs - Current time in epoch milliseconds.
+ * @returns Milliseconds left until the goal; 0 once the goal is met or passed.
+ */
+export function getRemainingGoalMs(session: TimerSession, nowMs: number): number {
+  return Math.max(0, session.goalSeconds * 1000 - getElapsedMs(session, nowMs));
 }

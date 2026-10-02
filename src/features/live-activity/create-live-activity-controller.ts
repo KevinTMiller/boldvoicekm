@@ -2,7 +2,8 @@
  * Live Activity controller (Model layer).
  * The facade the study timer view model talks to. For each event it asks the strategy's trigger
  * policy what to do, tracks whether an activity is meant to be showing, and hands the resulting
- * commands to the command queue. Created once per launch by live-activity-context.tsx.
+ * commands to the command queue. In the other direction it relays Pause/Resume taps from the
+ * activity the queue is tracking. Created once per launch by live-activity-context.tsx.
  */
 import {
   createLiveActivityCommandQueue,
@@ -65,6 +66,15 @@ export function createLiveActivityController({
       }
       isActivityShowing = true;
       return restoredSnapshot.session;
+    },
+    addPauseChangeListener(listener) {
+      return strategy.presenter.addPauseChangeListener((change) => {
+        // A tap can land on an activity the queue no longer tracks, such as one being ended
+        // after Stop. Only the current session's activity may pause or resume it.
+        if (change.activityId === queue.getTrackedActivityId()) {
+          listener(change);
+        }
+      });
     },
     whenIdle: () => queue.whenIdle(),
   };

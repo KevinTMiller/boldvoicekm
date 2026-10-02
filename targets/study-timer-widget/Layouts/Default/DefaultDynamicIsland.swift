@@ -1,8 +1,8 @@
 // Default Dynamic Island presentations (widget layer).
-// - Compact: the session name, truncated to one line, and the elapsed time.
-// - Expanded: the full session name, a large elapsed time, a goal progress ring and a
-//   Studying/Paused status.
-// - Minimal (shown when another app's activity shares the island): the elapsed time only.
+// - Expanded: the same row as the Lock Screen (emoji progress ring, elapsed time over the session
+//   title, Pause/Resume button), placed below the camera so it lays out predictably.
+// - Compact: the task emoji with the session name beside it, and the elapsed time.
+// - Minimal (shown when another app's activity shares the island): the emoji inside a small ring.
 // Built by DefaultLayout.swift.
 
 import SwiftUI
@@ -16,56 +16,71 @@ enum DefaultDynamicIsland {
   /// - Parameters:
   ///   - attributes: Static data the activity was started with.
   ///   - state: Current content state.
+  ///   - activityId: ActivityKit id of this activity, for the Pause/Resume button.
+  ///   - isStale: Whether iOS is rendering this activity because the goal end, its stale date, has
+  ///     passed. That render shows "Finished!" even though the app may be suspended.
   /// - Returns: The configured Dynamic Island.
   static func make(
     attributes: StudyTimerAttributes,
-    state: StudyTimerAttributes.ContentState
+    state: StudyTimerAttributes.ContentState,
+    activityId: String,
+    isStale: Bool
   ) -> DynamicIsland {
-    DynamicIsland {
-      DynamicIslandExpandedRegion(.leading) {
-        Label(state.isPaused ? "Paused" : "Studying", systemImage: state.isPaused ? "pause.fill" : "book.fill")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(StudyTimerWidgetPalette.accent)
-      }
-      DynamicIslandExpandedRegion(.trailing) {
-        GoalProgressView(state: state, goalSeconds: attributes.goalSeconds)
-          .progressViewStyle(.circular)
-          .tint(StudyTimerWidgetPalette.accent)
-          .frame(width: 36, height: 36)
-      }
-      DynamicIslandExpandedRegion(.center) {
-        Text(attributes.sessionName)
-          .font(.headline)
-          .lineLimit(2)
-          .multilineTextAlignment(.center)
-      }
+    let isFinished = isStudyTimerFinished(
+      state: state,
+      goalSeconds: attributes.goalSeconds,
+      isStale: isStale
+    )
+    return DynamicIsland {
       DynamicIslandExpandedRegion(.bottom) {
-        ElapsedTimeText(state: state)
-          .font(.largeTitle.monospacedDigit().weight(.semibold))
-          .multilineTextAlignment(.center)
-          .frame(maxWidth: .infinity)
+        DefaultSessionRow(
+          attributes: attributes,
+          state: state,
+          activityId: activityId,
+          isStale: isStale,
+          ringDiameter: 52,
+          timeFontSize: 30
+        )
+        .padding(.horizontal, 4)
       }
     } compactLeading: {
-      Text(attributes.sessionName)
-        .font(.caption.weight(.semibold))
-        .lineLimit(1)
-        .truncationMode(.tail)
-        .frame(maxWidth: 64, alignment: .leading)
+      // The name sits beside the emoji in the compact island. A long name truncates rather than
+      // pushing the elapsed time off the trailing side.
+      HStack(spacing: 4) {
+        Text(attributes.sessionEmoji)
+          .font(.system(size: 15))
+        Text(attributes.sessionName)
+          .font(.caption2.weight(.semibold))
+          .lineLimit(1)
+      }
     } compactTrailing: {
       // A fixed maximum width stops the timer text from reserving extra space and pushing the
       // island wider than needed.
-      ElapsedTimeText(state: state)
+      ElapsedTimeText(state: state, goalSeconds: attributes.goalSeconds, isStale: isStale)
         .font(.caption.monospacedDigit().weight(.semibold))
         .multilineTextAlignment(.trailing)
-        .frame(maxWidth: 56)
-        .foregroundStyle(StudyTimerWidgetPalette.accent)
+        // "Finished!" is wider than a short time, so give it a little more room than the digits.
+        .frame(maxWidth: isFinished ? 88 : 56)
+        .foregroundStyle(compactTimeColor(state: state, goalSeconds: attributes.goalSeconds, isStale: isStale))
     } minimal: {
-      // The minimal view is tiny, so drop the hours component (minutes keep counting past 59).
-      ElapsedTimeText(state: state, showsHours: false)
-        .font(.system(size: 11, weight: .semibold).monospacedDigit())
-        .multilineTextAlignment(.center)
-        .foregroundStyle(StudyTimerWidgetPalette.accent)
+      EmojiProgressRing(attributes: attributes, state: state, diameter: 24, isFinished: isFinished)
     }
-    .keylineTint(StudyTimerWidgetPalette.accent)
+    .keylineTint(StudyTimerWidgetPalette.progressRing)
+  }
+
+  /// Color of the compact elapsed time.
+  /// - Parameters:
+  ///   - state: Current content state.
+  ///   - goalSeconds: Goal duration in seconds.
+  ///   - isStale: Whether this render is the goal-end stale render.
+  /// - Returns: The ring color, dimmed while paused before the goal. Finished stays full strength.
+  private static func compactTimeColor(
+    state: StudyTimerAttributes.ContentState,
+    goalSeconds: Double,
+    isStale: Bool
+  ) -> Color {
+    state.isPaused && !isStudyTimerFinished(state: state, goalSeconds: goalSeconds, isStale: isStale)
+      ? StudyTimerWidgetPalette.progressRing.opacity(StudyTimerWidgetPalette.pausedOpacity)
+      : StudyTimerWidgetPalette.progressRing
   }
 }

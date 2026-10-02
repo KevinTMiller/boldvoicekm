@@ -79,9 +79,21 @@ describe('immediate trigger policy', () => {
       [],
     ],
     [
-      'does nothing when the app moves to the background, because the widget ticks natively',
+      'pushes the current session when the app backgrounds, so Finished reaches the Lock Screen',
       { type: 'appMovedToBackground', session },
       true,
+      [{ type: 'update', session }],
+    ],
+    [
+      'does nothing when the app backgrounds without a session',
+      { type: 'appMovedToBackground', session: null },
+      true,
+      [],
+    ],
+    [
+      'does nothing when the app backgrounds and nothing is showing',
+      { type: 'appMovedToBackground', session },
+      false,
       [],
     ],
   ])('%s', (_description, event, isActivityShowing, expectedCommands) => {

@@ -18,14 +18,15 @@ function createFormProps(overrides: Partial<NewSessionFormProps> = {}): NewSessi
   return {
     draftSessionName: '',
     maxSessionNameLength: 60,
-    goalOptionsMinutes: [25, 50, 90],
-    selectedGoalMinutes: 25,
+    suggestedEmojis: ['📚', '🍅'],
+    selectedEmoji: '📚',
+    goalOptionsMinutes: [15, 25, 90],
+    selectedGoalMinutes: 15,
     canStartSession: false,
-    canCancel: false,
     onChangeDraftSessionName: jest.fn(),
+    onSelectEmoji: jest.fn(),
     onSelectGoalMinutes: jest.fn(),
     onPressStart: jest.fn(),
-    onPressCancel: jest.fn(),
     ...overrides,
   };
 }
@@ -83,20 +84,20 @@ describe('NewSessionForm name input', () => {
   });
 });
 
-// Requirement: Cancel is offered only while composing over an active session.
-describe('NewSessionForm cancel', () => {
-  it('hides Cancel when there is no session to go back to', async () => {
-    await render(<NewSessionForm {...createFormProps({ canCancel: false })} />);
-
-    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeOnTheScreen();
-  });
-
-  it('reports Cancel when it is offered', async () => {
-    const props = createFormProps({ canCancel: true });
+// Requirement: the task emoji and the goal both come from the form.
+describe('NewSessionForm emoji and goal', () => {
+  it('selects a suggested emoji', async () => {
+    const props = createFormProps();
     await render(<NewSessionForm {...props} />);
 
-    await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+    await fireEvent.press(screen.getByRole('button', { name: '🍅' }));
 
-    expect(props.onPressCancel).toHaveBeenCalledTimes(1);
+    expect(props.onSelectEmoji).toHaveBeenCalledWith('🍅');
+  });
+
+  it('shows the selected goal', async () => {
+    await render(<NewSessionForm {...createFormProps({ selectedGoalMinutes: 90 })} />);
+
+    expect(screen.getByText('90 min')).toBeOnTheScreen();
   });
 });

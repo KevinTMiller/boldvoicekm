@@ -32,7 +32,9 @@ export function createImmediateTriggerPolicy(): LiveActivityTriggerPolicy {
  * - Paused or resumed: update, if an activity is meant to be showing.
  * - Stopped: end, always, so leftovers are cleaned up even if the app lost track of them.
  * - App became active: update, to re-sync anything missed while backgrounded.
- * - App moved to background: nothing, because the widget keeps ticking natively.
+ * - App moved to background: update, so a session that just finished is pushed before iOS suspends
+ *   the app. The widget keeps ticking on its own until that update; the update is what switches it
+ *   to "Finished!".
  *
  * @param event - What just happened.
  * @param context - Whether an activity is meant to be showing.
@@ -55,6 +57,8 @@ function getImmediateCommandsForEvent(
         ? [{ type: 'update', session: event.session }]
         : [];
     case 'appMovedToBackground':
-      return [];
+      return event.session !== null && context.isActivityShowing
+        ? [{ type: 'update', session: event.session }]
+        : [];
   }
 }

@@ -1,8 +1,9 @@
 // Bridge records for the study timer Live Activity (native bridge layer).
 // These mirror the TypeScript types in ../src/StudyTimerActivity.types.ts. Expo Modules converts
 // the JavaScript objects passed to StudyTimerActivityModule into these structs field by field, so
-// field names must match the TypeScript property names exactly. Times cross the bridge as epoch
-// milliseconds and are converted to Date here.
+// field names must match the TypeScript property names exactly. The same goes for the dictionaries
+// sent back: activity snapshots and the "onPauseChange" event body. Times cross the bridge as
+// epoch milliseconds and are converted to Date here.
 
 import ExpoModulesCore
 import Foundation
@@ -15,12 +16,16 @@ struct StudyTimerActivityStateRecord: Record {
   @Field var runningSinceMs: Double = 0
   /// Elapsed seconds frozen at pause time.
   @Field var pausedElapsedSeconds: Double = 0
+  /// Progress-ring stroke as #RRGGBB. Orange while running, dimmed while paused, blue when finished.
+  @Field var ringColorHex: String = "#FF6B2B"
 }
 
 /// Mirrors `StartStudyTimerActivityOptions` in TypeScript.
 struct StartStudyTimerActivityRecord: Record {
   /// Session name typed by the user.
   @Field var sessionName: String = ""
+  /// Task emoji picked by the user.
+  @Field var sessionEmoji: String = ""
   /// Goal duration in seconds.
   @Field var goalSeconds: Double = 0
   /// Widget layout to render.
@@ -33,10 +38,11 @@ struct StartStudyTimerActivityRecord: Record {
 
 extension StartStudyTimerActivityRecord {
   /// Builds the static ActivityKit attributes for a new activity.
-  /// - Returns: Attributes carrying the session's name, goal, layout variant and start time.
+  /// - Returns: Attributes carrying the session's name, emoji, goal, layout variant and start time.
   func makeAttributes() -> StudyTimerAttributes {
     StudyTimerAttributes(
       sessionName: sessionName,
+      sessionEmoji: sessionEmoji,
       goalSeconds: goalSeconds,
       presentationVariant: presentationVariant,
       sessionStartedAt: makeDate(fromEpochMilliseconds: sessionStartedAtMs)
@@ -51,7 +57,8 @@ extension StudyTimerActivityStateRecord {
     StudyTimerAttributes.ContentState(
       isPaused: isPaused,
       runningSinceDate: makeDate(fromEpochMilliseconds: runningSinceMs),
-      pausedElapsedSeconds: pausedElapsedSeconds
+      pausedElapsedSeconds: pausedElapsedSeconds,
+      ringColorHex: ringColorHex
     )
   }
 }
@@ -63,6 +70,7 @@ extension StudyTimerActivitySnapshot {
     [
       "id": id,
       "sessionName": attributes.sessionName,
+      "sessionEmoji": attributes.sessionEmoji,
       "goalSeconds": attributes.goalSeconds,
       "presentationVariant": attributes.presentationVariant,
       "sessionStartedAtMs": makeEpochMilliseconds(from: attributes.sessionStartedAt),
@@ -70,7 +78,20 @@ extension StudyTimerActivitySnapshot {
         "isPaused": state.isPaused,
         "runningSinceMs": makeEpochMilliseconds(from: state.runningSinceDate),
         "pausedElapsedSeconds": state.pausedElapsedSeconds,
+        "ringColorHex": state.ringColorHex,
       ] as [String: Any],
+    ]
+  }
+}
+
+extension StudyTimerActivityPauseChange {
+  /// Converts an applied Pause/Resume tap into the "onPauseChange" event body.
+  /// - Returns: An object matching `StudyTimerActivityPauseChangeEvent` in TypeScript.
+  func makeEventBody() -> [String: Any?] {
+    [
+      "activityId": activityId,
+      "isPaused": isPaused,
+      "changedAtMs": makeEpochMilliseconds(from: changedAt),
     ]
   }
 }

@@ -1,9 +1,10 @@
 // Study timer Live Activity configuration (widget layer).
 // Connects StudyTimerAttributes to its Lock Screen and Dynamic Island views. The layout is chosen
 // per activity from `presentationVariant`, which the app stores on the activity when it starts
-// (see src/features/live-activity). To add a variant: add a folder under Layouts/, add one `case`
-// to each switch below, and register the id in src/features/live-activity/live-activity-registry.ts.
-// Unknown variants always fall back to the default layout.
+// (see src/features/live-activity). Layouts also get the activity's id, which their Pause/Resume
+// button hands to PauseOrResumeStudyTimerIntent. To add a variant: add a folder under Layouts/,
+// add one `case` to each switch below, and register the id in
+// src/features/live-activity/live-activity-registry.ts. Unknown variants fall back to the default.
 
 import ActivityKit
 import SwiftUI
@@ -31,9 +32,19 @@ private func makeLockScreenView(
 ) -> some View {
   switch context.attributes.presentationVariant {
   case DefaultLayout.variantId:
-    DefaultLayout.lockScreen(attributes: context.attributes, state: context.state)
+    DefaultLayout.lockScreen(
+      attributes: context.attributes,
+      state: context.state,
+      activityId: context.activityID,
+      isStale: context.isStale
+    )
   default:
-    DefaultLayout.lockScreen(attributes: context.attributes, state: context.state)
+    DefaultLayout.lockScreen(
+      attributes: context.attributes,
+      state: context.state,
+      activityId: context.activityID,
+      isStale: context.isStale
+    )
   }
 }
 
@@ -46,8 +57,18 @@ private func makeDynamicIsland(
 ) -> DynamicIsland {
   switch context.attributes.presentationVariant {
   case DefaultLayout.variantId:
-    return DefaultLayout.dynamicIsland(attributes: context.attributes, state: context.state)
+    return DefaultLayout.dynamicIsland(
+      attributes: context.attributes,
+      state: context.state,
+      activityId: context.activityID,
+      isStale: context.isStale
+    )
   default:
-    return DefaultLayout.dynamicIsland(attributes: context.attributes, state: context.state)
+    return DefaultLayout.dynamicIsland(
+      attributes: context.attributes,
+      state: context.state,
+      activityId: context.activityID,
+      isStale: context.isStale
+    )
   }
 }

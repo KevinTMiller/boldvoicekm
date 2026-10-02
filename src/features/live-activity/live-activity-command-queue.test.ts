@@ -255,4 +255,33 @@ describe('command queue restore', () => {
     expect(presenter.activeActivities.has('duplicate')).toBe(false);
     expect(onError).toHaveBeenCalledWith(expect.any(Error), 'end duplicate activity stubborn');
   });
+
+  it('tracks the adopted activity', async () => {
+    const { queue, presenter } = createQueueUnderTest();
+    presenter.seedActivity(makeSnapshot('survivor', 1000));
+
+    await queue.restore(selectSessionToRestore);
+
+    expect(queue.getTrackedActivityId()).toBe('survivor');
+  });
+});
+
+// Requirement: the controller can tell which activity belongs to the current session, so only
+// that activity's Pause/Resume button changes the session.
+describe('command queue tracked activity', () => {
+  it('tracks nothing before any start has finished', () => {
+    const { queue } = createQueueUnderTest();
+
+    expect(queue.getTrackedActivityId()).toBeNull();
+  });
+
+  it('tracks the activity a start created, until an end', async () => {
+    const { queue } = createQueueUnderTest();
+
+    await queue.enqueue({ type: 'start', session: makeSession('Chapter 5') });
+    expect(queue.getTrackedActivityId()).toBe('activity-1');
+
+    await queue.enqueue({ type: 'end' });
+    expect(queue.getTrackedActivityId()).toBeNull();
+  });
 });

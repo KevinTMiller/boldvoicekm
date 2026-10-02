@@ -1,9 +1,12 @@
 /**
- * Tests for the ActivityKit presenter (Model layer I/O adapter), against a fake native API.
+ * Tests for the ActivityKit presenter (Model layer I/O adapter), against a fake native API. The
+ * fake keeps the pause listener the presenter registers, so tests can play the native module
+ * reporting a tap on the Live Activity.
  */
 import type {
   StartStudyTimerActivityOptions,
   StudyTimerActivityApi,
+  StudyTimerActivityPauseChangeEvent,
   StudyTimerActivitySnapshot,
   StudyTimerActivityState,
 } from '../../../../modules/study-timer-activity/src';
@@ -19,7 +22,7 @@ import {
 } from '@/features/study-timer/timer-state';
 
 const NOW_MS = 1_000_000;
-const sessionInput = { name: 'Chapter 5', goalSeconds: 1500 };
+const sessionInput = { name: 'Chapter 5', emoji: '🍅', goalSeconds: 1500 };
 
 /**
  * Creates a fake native API whose functions are Jest mocks.
@@ -39,6 +42,9 @@ function createFakeNativeApi(isAvailable = true, areActivitiesEnabled = true) {
     endActivity: jest.fn(async (_activityId: string) => {}),
     endAllActivities: jest.fn(async () => {}),
     getActiveActivities: jest.fn(async (): Promise<StudyTimerActivitySnapshot[]> => []),
+    addPauseChangeListener: jest.fn(
+      (_listener: (event: StudyTimerActivityPauseChangeEvent) => void) => ({ remove: jest.fn() })
+    ),
   } satisfies StudyTimerActivityApi;
 }
 
@@ -75,10 +81,16 @@ describe('ActivityKit presenter commands', () => {
     expect(activityId).toBe('activity-1');
     expect(nativeApi.startActivity).toHaveBeenCalledWith({
       sessionName: 'Chapter 5',
+      sessionEmoji: '🍅',
       goalSeconds: 1500,
       presentationVariant: 'default',
       sessionStartedAtMs: NOW_MS,
-      state: { isPaused: false, runningSinceMs: NOW_MS, pausedElapsedSeconds: 3 },
+      state: {
+        isPaused: false,
+        runningSinceMs: NOW_MS,
+        pausedElapsedSeconds: 3,
+        ringColorHex: '#FF6B2B',
+      },
     });
   });
 
@@ -115,18 +127,30 @@ describe('ActivityKit presenter listActive', () => {
       {
         id: 'running',
         sessionName: 'Running',
+        sessionEmoji: '📚',
         goalSeconds: 1500,
         presentationVariant: 'default',
         sessionStartedAtMs: NOW_MS,
-        state: { isPaused: false, runningSinceMs: NOW_MS - 10_000, pausedElapsedSeconds: 0 },
+        state: {
+          isPaused: false,
+          runningSinceMs: NOW_MS - 10_000,
+          pausedElapsedSeconds: 0,
+          ringColorHex: '#FF6B2B',
+        },
       },
       {
         id: 'paused',
         sessionName: 'Paused',
+        sessionEmoji: '🍅',
         goalSeconds: 3000,
         presentationVariant: 'default',
         sessionStartedAtMs: NOW_MS,
-        state: { isPaused: true, runningSinceMs: NOW_MS, pausedElapsedSeconds: 75 },
+        state: {
+          isPaused: true,
+          runningSinceMs: NOW_MS,
+          pausedElapsedSeconds: 75,
+          ringColorHex: '#EEAC92',
+        },
       },
     ]);
     const presenter = createActivityKitPresenter({ nativeApi });
@@ -139,5 +163,32 @@ describe('ActivityKit presenter listActive', () => {
     expect(paused.activityId).toBe('paused');
     expect(isSessionPaused(paused.session)).toBe(true);
     expect(getElapsedMs(paused.session, NOW_MS + 999_000)).toBe(75_000);
+    expect(paused.session.emoji).toBe('🍅');
+  });
+});
+
+// Requirement: a Pause/Resume tap on the Live Activity is relayed from the native module.
+describe('ActivityKit presenter addPauseChangeListener', () => {
+  it('relays native tap events as pause changes', () => {
+    const nativeApi = createFakeNativeApi();
+    const listener = jest.fn();
+    createActivityKitPresenter({ nativeApi }).addPauseChangeListener(listener);
+    const relayNativeEvent = nativeApi.addPauseChangeListener.mock.calls[0][0];
+
+    relayNativeEvent({ activityId: 'activity-1', isPaused: false, changedAtMs: NOW_MS });
+
+    expect(listener).toHaveBeenCalledWith({
+      activityId: 'activity-1',
+      isPaused: false,
+      changedAtMs: NOW_MS,
+    });
+  });
+
+  it('returns the native subscription, so removing it stops the native listener', () => {
+    const nativeApi = createFakeNativeApi();
+
+    createActivityKitPresenter({ nativeApi }).addPauseChangeListener(jest.fn()).remove();
+
+    expect(nativeApi.addPauseChangeListener.mock.results[0].value.remove).toHaveBeenCalledTimes(1);
   });
 });
