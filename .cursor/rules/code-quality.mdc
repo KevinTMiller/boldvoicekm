@@ -1,0 +1,62 @@
+---
+description: Function design, naming, docs, testability, and React Native conventions
+alwaysApply: true
+---
+
+# Code Quality
+
+## Discrete functions
+
+- A function does one thing. Prefer small helpers over multi-step procedures.
+- Split "fetch + map + persist", "validate + submit", or "format + render" into separate functions.
+- Components render and wire events; move non-UI logic into named helpers or hooks.
+
+```ts
+// ❌ BAD — fetch, transform, and side effects in one place
+async function loadProfile(userId: string) {
+  const raw = await api.getUser(userId);
+  const profile = { name: raw.full_name.trim(), ... };
+  await cache.set(userId, profile);
+  return profile;
+}
+
+ // ✅ GOOD — each step is named and testable alone
+function mapUserResponseToProfile(raw: UserResponse): Profile { ... }
+async function fetchUserResponse(userId: string): Promise<UserResponse> { ... }
+async function saveProfileToCache(userId: string, profile: Profile): Promise<void> { ... }
+```
+
+## English-like names
+
+- Names should read like prose: `getLessonById`, `isMicrophonePermissionGranted`, `remainingPracticeMinutes`.
+- Avoid abbreviations (`usr`, `tmp`, `hdlr`), vague verbs (`handle`, `process`, `doStuff`), and encoded types (`strName`, `arrItems`).
+- Boolean names use `is` / `has` / `can` / `should`. Event handlers use `on` + subject (`onPressStartRecording`).
+
+## Public documentation
+
+- Exported functions, hooks, and components get a short JSDoc: purpose, params, and return value when non-obvious.
+- Document side effects and thrown errors. Skip trivial private helpers unless the intent is unclear.
+
+```ts
+/**
+ * Returns the next unfinished lesson for the learner, or null if the path is complete.
+ */
+export function getNextLesson(path: LearningPath): Lesson | null { ... }
+```
+
+## Testability
+
+- Prefer pure functions for business logic; keep I/O at the edges.
+- Inject dependencies (fetchers, clocks, storage) instead of hard-coding them when that enables tests.
+- Avoid hidden module state. Side effects should be explicit and easy to mock.
+- Colocate tests next to the unit under test when tests are added (`foo.ts` → `foo.test.ts`).
+
+## React Native / Expo conventions
+
+- Functional components and hooks only. No class components.
+- Screens live in `src/app/`; reusable UI and logic live outside it.
+- Use Expo modules and `@expo/ui` before third-party or hand-rolled native UI.
+- Style with `StyleSheet.create` and theme tokens from `src/constants/theme` (or a future `src/theme/`). No hardcoded colors/spacing in screens when a token exists.
+- Use `Pressable` (not `TouchableOpacity`). Prefer `expo-image`, `expo-symbols`, and semantic/platform colors.
+- Use `process.env.EXPO_OS` instead of `Platform.OS` when branching on OS.
+- Keep components presentational when practical; put data loading and mutation in hooks.

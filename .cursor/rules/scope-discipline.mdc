@@ -1,0 +1,11 @@
+---
+description: Stay in scope; ask before unrelated or expansive changes
+alwaysApply: true
+---
+
+# Scope Discipline
+
+- Implement only what the user asked for. Do not expand into refactors, renames, dependency upgrades, file moves, or "while I'm here" cleanups unless they are required for the request.
+- If a needed change falls outside the stated scope (other features, config, tooling, unrelated files, new dependencies), stop and ask for permission before doing it.
+- When the request is ambiguous about boundaries, ask a clarifying question first instead of guessing a larger interpretation.
+- Summarize out-of-scope findings briefly if useful, but do not act on them without approval.
