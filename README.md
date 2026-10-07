@@ -5,17 +5,85 @@ An Expo / React Native study timer for iOS. You name a session, pick a task emoj
 ## Requirements
 
 - **A development build.** Live Activities need native code (a local Expo module plus a widget extension), so they don't work in Expo Go. In Expo Go, on Android and on web, the timer still works; it just shows no Live Activity.
-- **An Apple team ID.** Before building for a device, add `"appleTeamId": "<YOUR_TEAM_ID>"` under `expo.ios` in `app.json`. `@bacons/apple-targets` needs it to sign the widget extension. Simulator builds work without it.
+- **An Apple team ID.** `expo.ios.appleTeamId` is already set in `app.json`. `@bacons/apple-targets` uses it to sign the widget extension. Change it only if a build fails because that team cannot sign this bundle id.
 - **iOS 16.4 or later.** The Dynamic Island also needs an iPhone 14 Pro or later (a simulator of one works too). The Live Activity's Pause/Resume button needs iOS 17; on iOS 16 the activity still shows, without that button.
 
-## Getting started
+## Run the app
+
+Run these from the repository root, in order. Every command is non-interactive. Do not use Expo Go, and do not run `npx expo start` by itself: Live Activities are native code and only appear in the development build produced below. Do not edit `ios/` or `android/`; they are generated and gitignored. Configure native behavior in `app.json`, `modules/`, and `targets/`.
+
+### 1. Check the machine
+
+- macOS with Xcode installed, including the iOS 16.4 SDK or newer. `xcode-select -p` must print a path.
+- Node.js 20 or newer (`node -v`) and npm (`npm -v`).
+
+### 2. Install dependencies
 
 ```bash
-npm install
-npx expo run:ios      # generates ios/ with prebuild, builds, and launches the app
+npm ci
 ```
 
-`ios/` and `android/` are generated (Continuous Native Generation) and gitignored. Don't edit them; configure native behavior in `app.json`, `modules/` and `targets/` instead. If `ios/` already exists, `expo run:ios` reuses it and does not notice new Swift files. After changing native config, adding a Swift file under `modules/`, or adding, renaming or removing a file in `targets/study-timer-widget/_shared/`, regenerate with `npx expo prebuild -p ios`. Use `--clean` when the generated project itself is stale, for example after adding `appleTeamId` or a widget layout.
+`npm ci` installs from `package-lock.json` and does not prompt.
+
+### 3. Pick a simulator
+
+The Dynamic Island needs an iPhone 14 Pro or later. List simulators:
+
+```bash
+xcrun simctl list devices available
+```
+
+Choose one available iPhone whose name is 14 Pro or newer (for example `iPhone 16 Pro`). Use that name exactly, including spaces. If it is not already booted:
+
+```bash
+xcrun simctl boot "iPhone 16 Pro"
+```
+
+Substitute the name you chose. If boot says the device is already booted, continue.
+
+### 4. Build, install, and launch
+
+```bash
+EXPO_NO_TELEMETRY=1 npx expo run:ios --device "iPhone 16 Pro"
+```
+
+Again, substitute the simulator name. This generates `ios/` on the first run, compiles the app and the Live Activity widget, installs them on that simulator, and starts Metro. Leave the process running.
+
+The launch succeeded when the simulator shows the Study Timer screen: a New Session form with a name field, emoji choices, a goal slider on 15 minutes, and a Start Session button.
+
+JavaScript changes reload through the running Metro process. Swift changes under `modules/` or `targets/` need the same `npx expo run:ios --device "..."` command again. If `ios/` already exists and a new Swift file was added under `modules/`, or a file was added, renamed, or removed in `targets/study-timer-widget/_shared/`, regenerate first:
+
+```bash
+CI=1 npx expo prebuild -p ios
+```
+
+Then run `npx expo run:ios --device "..."` again. Add `--clean` to that prebuild only when the generated project itself is stale, for example after changing `appleTeamId` or adding a widget layout. `--clean` deletes `ios/` and rebuilds it.
+
+### 5. Physical device, instead of the simulator
+
+List devices:
+
+```bash
+xcrun xctrace list devices
+```
+
+Pass the device name or UDID. The phone must be unlocked, trusted, and on iOS 16.4 or later.
+
+```bash
+EXPO_NO_TELEMETRY=1 npx expo run:ios --device "<device name or UDID>"
+```
+
+Do not pass `--device` with no value. That opens an interactive picker.
+
+### Checks that do not launch the app
+
+```bash
+npm test
+npx tsc --noEmit
+CI=1 EXPO_OFFLINE=1 EXPO_NO_TELEMETRY=1 npx expo lint
+```
+
+These do not install a Live Activity. Use section 4 to run the app.
 
 ## Scripts
 
@@ -89,32 +157,3 @@ Three pieces can be swapped. A `LiveActivityConfig` selects each one by id. The 
 - A restored activity keeps the layout variant it started with.
 
 **Shared struct:** `StudyTimerAttributes.swift` exists twice, in `modules/study-timer-activity/ios/` and `targets/study-timer-widget/Shared/`. ActivityKit matches activities to widgets by this type, so the two copies must stay byte-identical. `study-timer-attributes-sync.test.ts` fails if they drift.
-
-## Manual QA checklist
-
-Run these on a development build, on a device or on an iPhone 14 Pro (or later) simulator.
-
-**Lock Screen**
-
-- [ ] Start "Chapter 5 Review" with the tomato emoji and a 25 min goal, then lock the device. The activity shows the emoji inside the progress ring, the elapsed time ticking every second, and the title under the time. There is no "X% of Y min goal" line.
-- [ ] Pause in the app. Within 1–2 s the Lock Screen freezes the time and dims it. Resume, and it continues from the same value.
-- [ ] On iOS 17, tap Pause on the Lock Screen (and again from the expanded Dynamic Island). The app pauses too. Tap the same button, now Resume, and both continue.
-- [ ] Tap Stop. An alert asks "Are you sure you want to stop?" and says how many minutes are left until the goal. Tap Cancel: the session keeps running. Tap Stop again and confirm: the activity disappears and the New Session form returns.
-- [ ] Tap Stop after the goal is reached. The alert asks only the question, without a minutes-left line.
-
-**Dynamic Island**
-
-- [ ] Compact: the emoji on the left and the time on the right.
-- [ ] Expanded (long-press the island): the emoji inside the progress ring, the time, the title under the time, and Pause/Resume.
-- [ ] Minimal: start a second Live Activity from another app (for example, a Clock timer). The study timer's minimal view shows the progress ring with the emoji.
-
-**Edge cases**
-
-- [ ] Background the app for 2+ minutes. The activity keeps ticking, and when you reopen the app its time matches the activity.
-- [ ] Force-quit while running. The activity keeps ticking. Relaunch: the session is restored with the correct time, and Pause and Stop act on the same activity.
-- [ ] Force-quit while paused. Relaunch: the session is restored, still paused.
-- [ ] Start and stop sessions (confirming each Stop) as fast as possible several times. After the final Stop, no activity remains.
-- [ ] Turn Live Activities off in Settings. The timer still works, nothing crashes, and no activity appears.
-- [ ] Use a 60-character name. It truncates in the compact island and wraps in the expanded view.
-
-**Known limit:** iOS ends a Live Activity after 8 hours. A session older than that can't be restored from its activity after the app is killed.
