@@ -5,6 +5,7 @@
  * commands to the command queue. In the other direction it relays Pause/Resume taps from the
  * activity the queue is tracking. Created once per launch by live-activity-context.tsx.
  */
+import type { AnalyticsClient } from '@/features/analytics/analytics.types';
 import {
   createLiveActivityCommandQueue,
   type LiveActivityErrorReporter,
@@ -25,22 +26,29 @@ export type LiveActivityControllerOptions = {
   strategy: LiveActivityStrategy;
   /** Receives errors from the policy and presenter. Defaults to a console warning. */
   onError?: LiveActivityErrorReporter;
+  /**
+   * Records `live_activity_failed` after `onError` runs. Omitted clients record nothing.
+   * A throwing client is ignored so analytics cannot break the timer.
+   */
+  analytics?: AnalyticsClient;
 };
 
 /**
  * Creates the Live Activity controller.
  *
- * @param options - Strategy and optional error reporter.
+ * @param options - Strategy, optional error reporter, and optional analytics client.
  * @returns The controller.
  */
 export function createLiveActivityController({
   strategy,
   onError = warnAboutLiveActivityError,
+  analytics,
 }: LiveActivityControllerOptions): LiveActivityController {
+  const reportError = createErrorReporter(onError, analytics);
   const queue = createLiveActivityCommandQueue({
     presenter: strategy.presenter,
     presentationVariant: strategy.presentationVariant,
-    onError,
+    onError: reportError,
   });
   /** Whether a start (or restore) has been issued with no end since. See LiveActivityPolicyContext. */
   let isActivityShowing = false;
@@ -49,7 +57,12 @@ export function createLiveActivityController({
 
   return {
     notify(event) {
-      const commands = getCommandsReportingErrors(strategy.policy, event, { isActivityShowing }, onError);
+      const commands = getCommandsReportingErrors(
+        strategy.policy,
+        event,
+        { isActivityShowing },
+        reportError
+      );
       for (const command of commands) {
         isActivityShowing = isActivityShowingAfter(command, isActivityShowing);
         issuedCommandCount += 1;
@@ -131,4 +144,29 @@ function isActivityShowingAfter(command: LiveActivityCommand, wasShowing: boolea
  */
 function warnAboutLiveActivityError(error: unknown, taskDescription: string): void {
   console.warn(`[LiveActivity] ${taskDescription} failed`, error);
+}
+
+/**
+ * Logs a Live Activity failure and, when a client was provided, records it. The analytics call is
+ * isolated so a provider bug cannot change which commands run.
+ *
+ * @param onError - Existing reporter, usually the console warning.
+ * @param analytics - Client that receives `live_activity_failed`, if one was configured.
+ * @returns The reporter handed to the policy and the command queue.
+ */
+function createErrorReporter(
+  onError: LiveActivityErrorReporter,
+  analytics: AnalyticsClient | undefined
+): LiveActivityErrorReporter {
+  return (error, taskDescription) => {
+    onError(error, taskDescription);
+    try {
+      analytics?.track({
+        name: 'live_activity_failed',
+        properties: { task: taskDescription },
+      });
+    } catch {
+      // Analytics must not change the timer or the activity when a provider throws.
+    }
+  };
 }

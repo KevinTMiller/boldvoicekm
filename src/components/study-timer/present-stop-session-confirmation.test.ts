@@ -38,18 +38,24 @@ describe('presentStopSessionConfirmation on native', () => {
       'Are you sure you want to stop?',
       'You still have 15 minutes left in this session.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel', onPress: undefined },
         { text: 'Stop', style: 'destructive', onPress: expect.any(Function) },
       ]
     );
   });
 
-  it('confirms only when Stop is tapped', () => {
+  it('confirms only when Stop is tapped, and Cancel runs onCancel', () => {
     const onConfirm = jest.fn();
-    presentStopSessionConfirmation({ title: 'Are you sure you want to stop?', onConfirm });
+    const onCancel = jest.fn();
+    presentStopSessionConfirmation({
+      title: 'Are you sure you want to stop?',
+      onConfirm,
+      onCancel,
+    });
 
     getAlertButton('Cancel')?.onPress?.();
     expect(onConfirm).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledTimes(1);
 
     getAlertButton('Stop')?.onPress?.();
     expect(onConfirm).toHaveBeenCalledTimes(1);

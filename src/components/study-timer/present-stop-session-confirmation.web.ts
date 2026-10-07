@@ -9,15 +9,18 @@ import type { StopSessionConfirmationRequest } from '@/features/study-timer/stop
 /**
  * Asks with the browser's confirm dialog and runs `onConfirm` if the user clicks OK.
  *
- * @param request - Title, optional message, and the action to run on OK.
+ * @param request - Title, optional message, and the actions to run on OK or Cancel.
  */
 export function presentStopSessionConfirmation({
   title,
   message,
   onConfirm,
+  onCancel,
 }: StopSessionConfirmationRequest): void {
   const prompt = message === undefined ? title : `${title}\n\n${message}`;
   if (window.confirm(prompt)) {
     onConfirm();
+    return;
   }
+  onCancel?.();
 }

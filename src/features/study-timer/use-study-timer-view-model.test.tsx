@@ -393,6 +393,7 @@ describe('useStudyTimerViewModel stop', () => {
       title: 'Are you sure you want to stop?',
       message: 'You still have 5 minutes left in this session.',
       onConfirm: expect.any(Function),
+      onCancel: expect.any(Function),
     });
     expect(result.current.screenMode).toBe('running');
     expect(getReportedEventTypes(controller)).toEqual(['sessionStarted']);

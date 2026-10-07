@@ -12,15 +12,16 @@ import type { StopSessionConfirmationRequest } from '@/features/study-timer/stop
 /**
  * Shows the stop confirmation with Cancel and a destructive Stop button. Returns right away.
  *
- * @param request - Title, optional message, and the action to run if the user taps Stop.
+ * @param request - Title, optional message, and the actions to run if the user taps Stop or Cancel.
  */
 export function presentStopSessionConfirmation({
   title,
   message,
   onConfirm,
+  onCancel,
 }: StopSessionConfirmationRequest): void {
   Alert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel' },
+    { text: 'Cancel', style: 'cancel', onPress: onCancel },
     { text: 'Stop', style: 'destructive', onPress: onConfirm },
   ]);
 }

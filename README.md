@@ -99,13 +99,14 @@ The app uses MVVM. Each layer has its own folder:
 
 ```
 src/app/                          View (Expo Router routes)
-  _layout.tsx                       Stack + LiveActivityProvider
+  _layout.tsx                       Stack, AnalyticsProvider, LiveActivityProvider
   index.tsx                         TimerScreen: lays out components, wires them to the view model
 src/components/study-timer/       View: presentational components (ring card, emoji picker, goal slider, stop alert)
 src/features/study-timer/         ViewModel + Model
   use-study-timer-view-model.ts     ViewModel hook: state, display ticks, AppState, restore on launch
   build-study-timer-view-model.ts   Pure view-state builder (formatting, labels)
   timer-state.ts, ...               Pure, timestamp-based timer logic
+src/features/analytics/           Model: swappable event client (console by default; see "Analytics")
 src/features/live-activity/       Model: when and how the Live Activity is shown (see "Experiments")
 modules/study-timer-activity/     Native bridge: local Expo module (Swift ActivityKit calls + typed TS API)
 targets/study-timer-widget/       Widget extension (SwiftUI): Lock Screen and Dynamic Island layouts
@@ -124,6 +125,26 @@ The widget ticks the clock by itself with `Text(timerInterval:)` and `ProgressVi
 - **Killed app.** The activity stays on screen. On relaunch, the app adopts the newest surviving activity, restores its session (running or paused, with the correct time) and ends any duplicates.
 - **Rapid start/stop.** A command queue runs commands one at a time, in order. A start that has already been superseded is skipped. A start superseded while iOS is still creating the activity ends that activity as soon as it appears. As a safety net, every start and stop also clears every other activity. Together these mean no zombie activities.
 - **Live Activities turned off in Settings.** The ActivityKit presenter reports itself unsupported, and the app falls back to a no-op presenter. The timer keeps working.
+
+## Analytics
+
+Events go through an `AnalyticsClient` (`track(event)`). The app mounts `AnalyticsProvider` in `src/app/_layout.tsx`, which uses the `console` client: each event is printed as `[analytics] <name>` plus its properties. The free-text session name is not included.
+
+Recorded events:
+
+| Event | When |
+| --- | --- |
+| `session_started` | Start on the new-session form |
+| `session_paused` / `session_resumed` | Pause or resume in the app or on the Live Activity (`source`) |
+| `session_finished` | The clock reaches the goal and the session freezes |
+| `session_restarted` | Restart after the goal |
+| `stop_confirmation_shown` | Stop is tapped before the goal |
+| `stop_cancelled` | The stop dialog is dismissed |
+| `session_stopped` | The session ends (`reason`: `confirmed` or `new_session`) |
+| `session_restored` | A session is restored from a Live Activity after the app was killed |
+| `live_activity_failed` | A Live Activity command fails |
+
+To send these to a real provider, implement `AnalyticsClient`, register it in `src/features/analytics/analytics-registry.ts`, and pass its id to `<AnalyticsProvider clientId="...">`. Passing `client={...}` skips the registry. Call sites do not change.
 
 ## Experiments: changing how the Live Activity is triggered or shown
 

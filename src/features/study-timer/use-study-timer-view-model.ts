@@ -2,14 +2,20 @@
  * Study timer view model (ViewModel layer).
  * Owns the session and new-session form state, refreshes the displayed time while a session runs,
  * asks for confirmation before stopping, finishes the session when its goal is reached, reports session and app lifecycle events to the Live
- * Activity controller, applies Pause/Resume taps made on the Live Activity, and restores a session
- * that survived an app kill. TimerScreen (View) renders the values this hook returns, wires its
- * controls to the actions, and supplies the dialog that shows the stop confirmation. Display
- * values come from the pure buildStudyTimerViewModel.
+ * Activity controller, records those same moments on the analytics client, applies Pause/Resume
+ * taps made on the Live Activity, and restores a session that survived an app kill. TimerScreen
+ * (View) renders the values this hook returns, wires its controls to the actions, and supplies the
+ * dialog that shows the stop confirmation. Display values come from the pure buildStudyTimerViewModel.
  */
 import { useEffect, useEffectEvent, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { useAnalytics } from '@/features/analytics/analytics-context';
+import type {
+  AnalyticsClient,
+  AnalyticsControlSource,
+  SessionAnalyticsProperties,
+} from '@/features/analytics/analytics.types';
 import { useLiveActivityController } from '@/features/live-activity/live-activity-context';
 import type {
   LiveActivityController,
@@ -39,7 +45,9 @@ import {
 } from '@/features/study-timer/stop-session-confirmation';
 import {
   finishSession,
+  getElapsedSeconds,
   getMsUntilNextElapsedSecond,
+  getRemainingGoalMs,
   isGoalComplete,
   isSessionPaused,
   pauseSession,
@@ -98,10 +106,10 @@ type NewSessionFormValues = {
 /**
  * Provides the timer screen's state and actions. Must be used inside LiveActivityProvider.
  *
- * Side effects: reports events to the Live Activity controller, listens for Pause/Resume taps on
- * the Live Activity, schedules display refreshes while a session runs, listens to AppState,
- * restores a surviving session once on mount, and shows the stop confirmation through
- * `presentStopSessionConfirmation`.
+ * Side effects: reports events to the Live Activity controller, records session analytics, listens
+ * for Pause/Resume taps on the Live Activity, schedules display refreshes while a session runs,
+ * listens to AppState, restores a surviving session once on mount, and shows the stop confirmation
+ * through `presentStopSessionConfirmation`.
  *
  * @param options - The stop confirmation presenter, and an optional clock override.
  * @returns View-ready values and actions.
@@ -111,6 +119,7 @@ export function useStudyTimerViewModel({
   now = Date.now,
 }: StudyTimerViewModelOptions): StudyTimerViewModel {
   const controller = useLiveActivityController();
+  const analytics = useAnalytics();
   const [session, setSession] = useState<TimerSession | null>(null);
   const [nowMs, setNowMs] = useState(() => now());
   const [draftSessionName, setDraftSessionName] = useState('');
@@ -126,17 +135,26 @@ export function useStudyTimerViewModel({
    * @param shouldPause - True to pause, false to resume.
    * @param changedAtMs - When the change happened, in epoch milliseconds. Earlier than now when
    *   the tap was made on the Live Activity.
+   * @param source - Whether the change came from the in-app button or the Live Activity.
    */
-  function setSessionPaused(shouldPause: boolean, changedAtMs: number) {
+  function setSessionPaused(
+    shouldPause: boolean,
+    changedAtMs: number,
+    source: AnalyticsControlSource
+  ) {
     if (session === null || isSessionPaused(session) === shouldPause) {
       return;
     }
     // A Live Activity Resume after the goal must not start the clock again. Re-send the frozen
     // session so the activity, which iOS already updated, matches the finished screen.
     if (isGoalComplete(session, now())) {
+      const wasRunning = !isSessionPaused(session);
       const finished = finishSession(session, now());
       controller.notify({ type: 'sessionPaused', session: finished });
       setSession(finished);
+      if (wasRunning) {
+        trackSessionFinished(analytics, finished);
+      }
       return;
     }
     const updatedSession = shouldPause
@@ -146,17 +164,28 @@ export function useStudyTimerViewModel({
       type: shouldPause ? 'sessionPaused' : 'sessionResumed',
       session: updatedSession,
     });
+    analytics.track({
+      name: shouldPause ? 'session_paused' : 'session_resumed',
+      properties: { ...getSessionAnalyticsProperties(updatedSession, changedAtMs), source },
+    });
     setSession(updatedSession);
     setNowMs(now());
   }
 
   useDisplayRefresh(session, now, setNowMs);
-  useFinishSessionAtGoal(controller, session, nowMs, now, setSession);
+  useFinishSessionAtGoal(controller, analytics, session, nowMs, now, setSession);
   useAppStateReporting(controller, session, now, setNowMs);
   usePauseChangesFromLiveActivity(controller, (change) =>
-    setSessionPaused(change.isPaused, change.changedAtMs)
+    setSessionPaused(change.isPaused, change.changedAtMs, 'live_activity')
   );
   useSessionRestore(controller, (restoredSession) => {
+    analytics.track({
+      name: 'session_restored',
+      properties: {
+        ...getSessionAnalyticsProperties(restoredSession, now()),
+        isPaused: isSessionPaused(restoredSession),
+      },
+    });
     setSession(restoredSession);
     setNowMs(now());
   });
@@ -175,6 +204,13 @@ export function useStudyTimerViewModel({
       startedAtMs
     );
     controller.notify({ type: 'sessionStarted', session: newSession });
+    analytics.track({
+      name: 'session_started',
+      properties: {
+        goalMinutes: getSessionAnalyticsProperties(newSession, startedAtMs).goalMinutes,
+        emoji: newSession.emoji,
+      },
+    });
     setSession(newSession);
     setNowMs(startedAtMs);
     setDraftSessionName('');
@@ -191,11 +227,18 @@ export function useStudyTimerViewModel({
     if (isGoalComplete(session, now())) {
       const restartedSession = restartSession(session, now());
       controller.notify({ type: 'sessionResumed', session: restartedSession });
+      analytics.track({
+        name: 'session_restarted',
+        properties: {
+          goalMinutes: getSessionAnalyticsProperties(session, now()).goalMinutes,
+          emoji: session.emoji,
+        },
+      });
       setSession(restartedSession);
       setNowMs(now());
       return;
     }
-    setSessionPaused(!isSessionPaused(session), now());
+    setSessionPaused(!isSessionPaused(session), now(), 'app');
   }
 
   /**
@@ -208,13 +251,35 @@ export function useStudyTimerViewModel({
     if (session === null) {
       return;
     }
-    if (isGoalComplete(session, now())) {
+    const stoppedAtMs = now();
+    const properties = getSessionAnalyticsProperties(session, stoppedAtMs);
+    if (isGoalComplete(session, stoppedAtMs)) {
+      analytics.track({
+        name: 'session_stopped',
+        properties: { ...properties, reason: 'new_session' },
+      });
       stopSession();
       return;
     }
+    analytics.track({
+      name: 'stop_confirmation_shown',
+      properties: {
+        ...properties,
+        remainingMinutes: getRemainingMinutes(session, stoppedAtMs),
+      },
+    });
     presentStopSessionConfirmation({
-      ...buildStopSessionConfirmation(session, now()),
-      onConfirm: stopSession,
+      ...buildStopSessionConfirmation(session, stoppedAtMs),
+      onConfirm: () => {
+        analytics.track({
+          name: 'session_stopped',
+          properties: { ...properties, reason: 'confirmed' },
+        });
+        stopSession();
+      },
+      onCancel: () => {
+        analytics.track({ name: 'stop_cancelled', properties });
+      },
     });
   }
 
@@ -242,6 +307,51 @@ export function useStudyTimerViewModel({
 }
 
 /**
+ * Builds the properties shared by session events. The session name is left out.
+ *
+ * @param session - Session the event is about.
+ * @param nowMs - Time used to measure elapsed seconds, in epoch milliseconds.
+ * @returns Goal, emoji and elapsed seconds.
+ */
+function getSessionAnalyticsProperties(
+  session: TimerSession,
+  nowMs: number
+): SessionAnalyticsProperties {
+  return {
+    goalMinutes: session.goalSeconds / 60,
+    emoji: session.emoji,
+    elapsedSeconds: getElapsedSeconds(session, nowMs),
+  };
+}
+
+/**
+ * Records that a running session just froze at its goal.
+ *
+ * @param analytics - Client that receives the event.
+ * @param session - The frozen session.
+ */
+function trackSessionFinished(analytics: AnalyticsClient, session: TimerSession): void {
+  analytics.track({
+    name: 'session_finished',
+    properties: {
+      goalMinutes: session.goalSeconds / 60,
+      emoji: session.emoji,
+    },
+  });
+}
+
+/**
+ * Whole minutes left until the goal, rounded up, matching the stop dialog.
+ *
+ * @param session - Session the user asked to stop.
+ * @param nowMs - Current time in epoch milliseconds.
+ * @returns Minutes left, rounded up. Zero when no time remains.
+ */
+function getRemainingMinutes(session: TimerSession, nowMs: number): number {
+  return Math.ceil(getRemainingGoalMs(session, nowMs) / 60_000);
+}
+
+/**
  * Builds a new running session from the form's values.
  *
  * @param form - Name, emoji and goal from the form.
@@ -264,6 +374,7 @@ function createSessionFromForm(form: NewSessionFormValues, startedAtMs: number):
  * so the Lock Screen stops counting too. A paused session is left alone.
  *
  * @param controller - Live Activity controller.
+ * @param analytics - Client that records `session_finished`.
  * @param session - Active session, or null.
  * @param nowMs - Current time in epoch milliseconds. The effect re-checks when this changes.
  * @param now - Clock returning epoch milliseconds.
@@ -271,6 +382,7 @@ function createSessionFromForm(form: NewSessionFormValues, startedAtMs: number):
  */
 function useFinishSessionAtGoal(
   controller: LiveActivityController,
+  analytics: AnalyticsClient,
   session: TimerSession | null,
   nowMs: number,
   now: () => number,
@@ -283,6 +395,7 @@ function useFinishSessionAtGoal(
     const finishedSession = finishSession(session, now());
     controller.notify({ type: 'sessionPaused', session: finishedSession });
     setSession(finishedSession);
+    trackSessionFinished(analytics, finishedSession);
   });
 
   useEffect(() => {

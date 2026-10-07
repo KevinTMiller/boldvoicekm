@@ -15,15 +15,17 @@ export type StopSessionConfirmationContent = {
   message?: string;
 };
 
-/** A stop confirmation to show, plus what to do if the user confirms. */
+/** A stop confirmation to show, plus what to do with the user's answer. */
 export type StopSessionConfirmationRequest = StopSessionConfirmationContent & {
-  /** Called only if the user confirms. Cancelling calls nothing and leaves the session running. */
+  /** Called only if the user confirms. */
   onConfirm: () => void;
+  /** Called if the user dismisses the prompt. Omitted callers leave cancel as a no-op. */
+  onCancel?: () => void;
 };
 
 /**
  * Shows a stop confirmation. Returns right away; the user's answer arrives later, through the
- * request's `onConfirm`.
+ * request's `onConfirm` or `onCancel`.
  */
 export type PresentStopSessionConfirmation = (request: StopSessionConfirmationRequest) => void;
 

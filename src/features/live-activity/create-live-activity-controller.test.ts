@@ -276,3 +276,57 @@ describe('controller addPauseChangeListener', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 });
+
+// Requirement: a Live Activity failure is recorded, and a throwing analytics client cannot break the timer.
+describe('controller analytics', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('records a throwing policy as live_activity_failed', () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const track = jest.fn();
+    const presenter = createFakeLiveActivityPresenter();
+    const policy: LiveActivityTriggerPolicy = {
+      id: 'boom',
+      getCommandsForEvent() {
+        throw new Error('nope');
+      },
+    };
+    const controller = createLiveActivityController({
+      strategy: { policy, presenter, presentationVariant: 'default' },
+      analytics: { track },
+    });
+
+    controller.notify({ type: 'sessionStopped' });
+
+    expect(track).toHaveBeenCalledWith({
+      name: 'live_activity_failed',
+      properties: { task: 'boom policy' },
+    });
+  });
+
+  it('still reports the error when the analytics client throws', () => {
+    const onError = jest.fn();
+    const presenter = createFakeLiveActivityPresenter();
+    const policy: LiveActivityTriggerPolicy = {
+      id: 'boom',
+      getCommandsForEvent() {
+        throw new Error('nope');
+      },
+    };
+    const controller = createLiveActivityController({
+      strategy: { policy, presenter, presentationVariant: 'default' },
+      onError,
+      analytics: {
+        track() {
+          throw new Error('vendor');
+        },
+      },
+    });
+
+    controller.notify({ type: 'sessionStopped' });
+
+    expect(onError).toHaveBeenCalledWith(expect.any(Error), 'boom policy');
+  });
+});

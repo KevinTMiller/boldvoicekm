@@ -29,13 +29,19 @@ describe('presentStopSessionConfirmation on web', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it('asks with only the question when there is no message, and does nothing on Cancel', () => {
+  it('asks with only the question when there is no message, and cancels without confirming', () => {
     window.confirm = jest.fn(() => false);
     const onConfirm = jest.fn();
+    const onCancel = jest.fn();
 
-    presentStopSessionConfirmation({ title: 'Are you sure you want to stop?', onConfirm });
+    presentStopSessionConfirmation({
+      title: 'Are you sure you want to stop?',
+      onConfirm,
+      onCancel,
+    });
 
     expect(window.confirm).toHaveBeenCalledWith('Are you sure you want to stop?');
     expect(onConfirm).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });
