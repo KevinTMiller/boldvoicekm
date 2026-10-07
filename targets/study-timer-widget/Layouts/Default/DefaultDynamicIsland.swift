@@ -1,8 +1,8 @@
 // Default Dynamic Island presentations (widget layer).
-// - Expanded: the same row as the Lock Screen (emoji progress ring, elapsed time over the session
-//   title, Pause/Resume button), placed below the camera so it lays out predictably.
-// - Compact: the task emoji with the session name beside it, and the elapsed time.
-// - Minimal (shown when another app's activity shares the island): the emoji inside a small ring.
+// - Compact: the task emoji on the leading side and the elapsed time on the trailing side.
+// - Expanded: the full session name, the emoji, the elapsed time, and the progress ring, in the
+//   bottom region so they sit below the camera. The Pause/Resume button stays on this presentation.
+// - Minimal (shown when another app's activity shares the island): the elapsed time only.
 // Built by DefaultLayout.swift.
 
 import SwiftUI
@@ -33,26 +33,23 @@ enum DefaultDynamicIsland {
     )
     return DynamicIsland {
       DynamicIslandExpandedRegion(.bottom) {
+        // The name wraps here. The Lock Screen keeps a single uppercase line; this presentation
+        // shows the name as typed, up to the 60-character limit enforced when the session starts.
         DefaultSessionRow(
           attributes: attributes,
           state: state,
           activityId: activityId,
           isStale: isStale,
           ringDiameter: 52,
-          timeFontSize: 30
+          timeFontSize: 28,
+          sessionNameLineLimit: 3,
+          uppercasesSessionName: false
         )
         .padding(.horizontal, 4)
       }
     } compactLeading: {
-      // The name sits beside the emoji in the compact island. A long name truncates rather than
-      // pushing the elapsed time off the trailing side.
-      HStack(spacing: 4) {
-        Text(attributes.sessionEmoji)
-          .font(.system(size: 15))
-        Text(attributes.sessionName)
-          .font(.caption2.weight(.semibold))
-          .lineLimit(1)
-      }
+      Text(attributes.sessionEmoji)
+        .font(.system(size: 16))
     } compactTrailing: {
       // A fixed maximum width stops the timer text from reserving extra space and pushing the
       // island wider than needed.
@@ -63,12 +60,18 @@ enum DefaultDynamicIsland {
         .frame(maxWidth: isFinished ? 88 : 56)
         .foregroundStyle(compactTimeColor(state: state, goalSeconds: attributes.goalSeconds, isStale: isStale))
     } minimal: {
-      EmojiProgressRing(attributes: attributes, state: state, diameter: 24, isFinished: isFinished)
+      // The minimal capsule is only a few dozen points wide, so the digits shrink to fit instead
+      // of truncating to a single character.
+      ElapsedTimeText(state: state, goalSeconds: attributes.goalSeconds, isStale: isStale)
+        .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+        .minimumScaleFactor(0.5)
+        .lineLimit(1)
+        .foregroundStyle(compactTimeColor(state: state, goalSeconds: attributes.goalSeconds, isStale: isStale))
     }
     .keylineTint(StudyTimerWidgetPalette.progressRing)
   }
 
-  /// Color of the compact elapsed time.
+  /// Color of the elapsed time in the compact and minimal presentations.
   /// - Parameters:
   ///   - state: Current content state.
   ///   - goalSeconds: Goal duration in seconds.

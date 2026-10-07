@@ -33,6 +33,8 @@ struct DefaultLockScreenView: View {
 }
 
 /// Ring with emoji, elapsed time over the session title, and the Pause/Resume button, in one row.
+/// The Lock Screen uses one uppercase line for the name. The expanded Dynamic Island passes a
+/// higher line limit and leaves the name as typed so the full session name can wrap.
 struct DefaultSessionRow: View {
   /// Static data the activity was started with.
   let attributes: StudyTimerAttributes
@@ -46,6 +48,10 @@ struct DefaultSessionRow: View {
   let ringDiameter: CGFloat
   /// Point size of the elapsed time digits.
   let timeFontSize: CGFloat
+  /// How many lines the session name may occupy before it truncates.
+  var sessionNameLineLimit: Int = 1
+  /// Uppercases the session name. The Lock Screen does; the expanded island shows the typed name.
+  var uppercasesSessionName: Bool = true
 
   /// Ring, time and title, then the button at the trailing edge.
   var body: some View {
@@ -65,14 +71,22 @@ struct DefaultSessionRow: View {
           .multilineTextAlignment(.leading)
           .lineLimit(1)
         Text(attributes.sessionName)
-          .font(.caption.weight(.semibold))
-          .textCase(.uppercase)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
+          .font(uppercasesSessionName ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
+          .textCase(sessionNameCase)
+          .foregroundStyle(uppercasesSessionName ? .secondary : .primary)
+          .lineLimit(sessionNameLineLimit)
+          .minimumScaleFactor(sessionNameLineLimit > 1 ? 0.8 : 1)
+          // A multi-line name should take the height it needs instead of staying one line tall.
+          .fixedSize(horizontal: false, vertical: sessionNameLineLimit > 1)
       }
       Spacer(minLength: 8)
       PauseResumeButton(activityId: activityId, isPaused: state.isPaused, isFinished: isFinished)
     }
+  }
+
+  /// Uppercase on the Lock Screen; nil on the expanded island so the typed name is shown as entered.
+  private var sessionNameCase: Text.Case? {
+    uppercasesSessionName ? .uppercase : nil
   }
 
   /// True once the goal has been reached: paused at the goal, or the stale render at the goal end.

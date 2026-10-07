@@ -26,9 +26,9 @@ export type StudyTimerActivityState = {
 
 /** Everything needed to start a study timer Live Activity. */
 export type StartStudyTimerActivityOptions = {
-  /** Session name shown under the timer on the Lock Screen and in the Dynamic Island. */
+  /** Session name shown under the timer on the Lock Screen and in full on the expanded Dynamic Island. */
   sessionName: string;
-  /** Task emoji shown inside the progress ring and in the compact Dynamic Island. */
+  /** Task emoji shown inside the progress ring and beside the time in the compact Dynamic Island. */
   sessionEmoji: string;
   /** Goal duration in seconds; the progress ring fills toward it. */
   goalSeconds: number;
